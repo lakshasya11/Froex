@@ -42,3 +42,12 @@ backtest_results/
 # Personal files
 personal_notes.txt
 account_info.txt
+
+# Databases and Caches
+*.db
+*.db-shm
+*.db-wal
+*.csv
+backend/*_cache.json
+backend/active_trade.json
+backend/market_state.json
