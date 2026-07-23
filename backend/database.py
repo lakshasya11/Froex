@@ -105,6 +105,7 @@ class TradeDatabase:
                 ("sideways_score", "INTEGER"),
                 ("st_flips_5", "INTEGER"),
                 ("bb_bandwidth", "REAL"),
+                ("timeframe", "TEXT"),
             ]
             for col, dtype in new_cols:
                 try:
@@ -230,8 +231,8 @@ class TradeDatabase:
                                     sl, tp, entry_velocity, exit_reason, profit_points, profit_dollars, result, volume,
                                     score_momentum, score_trend, score_candle, score_execution, score_total,
                                     velocity_consistency, velocity_acceleration, score_acceleration, velocity_std, velocity_mean, mfe, mae, strategy_version, duration_seconds,
-                                    adx_14, sideways_score, st_flips_5, bb_bandwidth
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    adx_14, sideways_score, st_flips_5, bb_bandwidth, timeframe
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                                     (
                                         ticket_val,
@@ -266,6 +267,7 @@ class TradeDatabase:
                                         data.get("sideways_score", 0),
                                         data.get("st_flips_5", 0),
                                         data.get("bb_bandwidth", 0.0),
+                                        data.get("timeframe", "M5"),
                                     ),
                                 )
                         success = True

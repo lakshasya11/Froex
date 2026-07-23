@@ -639,6 +639,7 @@ class TradingBot(EntryMixin, ExitMixin):
                             "profit_dollars": round(float(profit_dollars or 0), 2),
                             "result": "WIN" if profit_points > 0 else "LOSS",
                             "volume": volume,
+                            "timeframe": self.timeframe,
                             "score_momentum": pos_data.get("score_momentum", 0.0),
                             "score_trend": pos_data.get("score_trend", 0.0),
                             "score_candle": pos_data.get("score_candle", 0.0),

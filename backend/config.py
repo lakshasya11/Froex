@@ -10,7 +10,7 @@ SYMBOL = "XAUUSD"
 TIMEFRAME = "M5"
 STRATEGY_VERSION = "v1.1.0-ConfidenceAnalyzer"
 
-LOT_SIZE = 0.15  # Fixed lot size for all trades
+LOT_SIZE = 0.10  # Fixed lot size for all trades
 MAX_SIMULTANEOUS_POSITIONS = 1  # Maximum number of simultaneous trades allowed
 MAX_LOSSES_PER_CANDLE = 99999  # Stop trading on this candle if we hit 2 losses
 MAX_DAILY_TRADES = 500  # Max 500 trades per calendar day
@@ -32,16 +32,16 @@ MAX_ENTRY_SLIPPAGE = 0.20  # Cancel the trade if slippage exceeds 0.20 points
 # =============================================================================
 # TECHNICAL ENTRY CRITERIA
 # =============================================================================
-BB_ANGLE_HARD_BLOCK = 5.0
+BB_ANGLE_HARD_BLOCK = 4.0    # Lower angle threshold (M1 bands curve faster)
 BB_ANGLE_STRONG = 10.0
 BB_ANGLE_VERY_STRONG = 15.0
 BB_ANGLE_EXTREME = 20.0
-ENTRY_VEL_FRESH = 0.05  # Minimum instantaneous velocity required for entry
-ENTRY_AVG_FRESH = 0.03  # Minimum average velocity required for entry
+ENTRY_VEL_FRESH = 0.04       # Slightly lowered velocity threshold for M1 ticks
+ENTRY_AVG_FRESH = 0.02       # Slightly lowered average velocity threshold
 MIN_ENTRY_2S_VEL = 0.04  # Minimum 2-second velocity required for entry
-MIN_BODY_SIZE = 0.10  # Minimum candle body size required to allow entry
+MIN_BODY_SIZE = 0.08         # Lower body size threshold for M1 candles
 ENTRY_CONFIRM_TICKS = (
-    2  # Require 2 consecutive ticks of confirmed conditions before entry
+    1      # 1 tick confirmation on M1 (2 ticks might be too slow)
 )
 MAX_CONFIRMATION_DRIFT = (
     0.60  # Maximum allowed price drift during the confirmation window
@@ -78,18 +78,18 @@ MTF_TIMEFRAMES = ["M15"]
 # Trailing Stop triggers, and Profit Lock scaling.
 TIMEFRAME_SETTINGS = {
     "M1": {
-        "MAX_TRADES_CANDLE": 99999,
+        "MAX_TRADES_CANDLE": 2,
         "MAX_CONSEC_LOSSES": 99999,
         "LOSS_PAUSE_CANDLES": 0,
         "TP_STRONG": 3.00,
         "TP_ULTRA_STRONG": 5.00,
-        "HARD_STOP_LOSS": 1.00,
-        "TRAIL_TRIGGER_PTS": 1.00,
-        "TRAIL_GAP_PTS": 0.60,
-        "PROFIT_LOCK_STEPS": [(0.80, 0.20)],
+        "HARD_STOP_LOSS": 2.00,
+        "TRAIL_TRIGGER_PTS": 0.80,     # Activate trailing stop early
+        "TRAIL_GAP_PTS": 0.40,         # Tight trailing gap
+        "PROFIT_LOCK_STEPS": [], # Removed profit lock for M1
     },
     "M5": {
-        "MAX_TRADES_CANDLE": 99999,
+        "MAX_TRADES_CANDLE": 3,
         "MAX_CONSEC_LOSSES": 99999,
         "LOSS_PAUSE_CANDLES": 0,
         "TP_STRONG": 5.00,
@@ -98,7 +98,7 @@ TIMEFRAME_SETTINGS = {
         "TRAIL_TRIGGER_PTS": 1.80,
         "TRAIL_GAP_PTS": 0.80,
         "PROFIT_LOCK_STEPS": [
-            (1.50, 0.50),
+            (1.20, 0.50),
         ],
     },
     "M15": {

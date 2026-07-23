@@ -355,6 +355,7 @@ export default function Home() {
       }
       
       const res = await fetch(url.toString());
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
       if (data.success) {
         setTrades(data.trades);
@@ -366,6 +367,7 @@ export default function Home() {
       // Fetch news data
       try {
         const newsRes = await fetch('/api/news');
+        if (!newsRes.ok) throw new Error(`HTTP error! status: ${newsRes.status}`);
         const newsData = await newsRes.json();
         if (newsData.success) {
           setNews(newsData);
@@ -392,6 +394,7 @@ export default function Home() {
     const fetchActiveTrade = async () => {
       try {
         const res = await fetch('/api/active');
+        if (!res.ok) return;
         const data = await res.json();
         if (data.success) {
           if (data.marketState) setMarketState(data.marketState);

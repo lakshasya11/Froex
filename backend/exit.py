@@ -150,8 +150,8 @@ class ExitMixin:
             st_dir = analysis.get("st_direction") if analysis else None
             entry_time_ts = pos_data.get("entry_time_ts", time.time())
 
-            # Ensure trade has been active for at least 3 seconds to avoid tick-glitch exits
-            if st_dir is not None and (time.time() - entry_time_ts >= 3.0):
+            # Ensure trade has been active for at least 1 second to avoid tick-glitch exits
+            if st_dir is not None and (time.time() - entry_time_ts >= 1.0):
                 # Direct check: SuperTrend is actively pointing AGAINST our open trade direction
                 st_against_us = (direction == "BUY" and st_dir == -1) or (direction == "SELL" and st_dir == 1)
                 
