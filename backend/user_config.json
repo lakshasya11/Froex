@@ -1,0 +1,12 @@
+{
+    "BOT_STATE": "RUNNING",
+    "TRADING_MODE": "Paper Trading",
+    "TIMEFRAME": "M5",
+    "SYMBOL": "XAUUSD",
+    "LOT_SIZE": 0.15,
+    "HARD_STOP_LOSS": 2,
+    "TP_STRONG": 5,
+    "MAX_DAILY_TRADES": 999999,
+    "DAILY_TAKE_PROFIT": 1000,
+    "DAILY_STOP_LOSS": 500
+}

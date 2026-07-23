@@ -42,6 +42,13 @@ export async function GET() {
 
       const parsedCurr = parseValue('NEWS_TARGET_CURRENCY', 'str');
       if (parsedCurr !== null) targetCurrency = parsedCurr as string;
+
+      const parsedBlockTrades = parseValue('BLOCK_TRADES_ON_NEWS', 'bool');
+      if (parsedBlockTrades !== null && !(parsedBlockTrades as boolean)) {
+          // If block is explicitly false, don't block
+          preMinutes = -1;
+          postMinutes = -1;
+      }
     }
 
     if (!fs.existsSync(newsPath)) {
@@ -61,7 +68,7 @@ export async function GET() {
     const todayStr = now.toISOString().split('T')[0];
     
     const relevantEvents = newsData.filter((e: any) => {
-      return e.country === targetCurrency && (e.impact === 'High' || e.impact === 'Medium');
+      return e.country === targetCurrency;
     });
 
     // Determine current block status
@@ -96,9 +103,9 @@ export async function GET() {
       }
     }
 
-    // Find next upcoming event
+    // Find next upcoming High impact event for the 'Next High Impact Event' banner
     const upcoming = relevantEvents
-      .filter((e: any) => new Date(e.date).getTime() > now.getTime())
+      .filter((e: any) => e.impact === 'High' && new Date(e.date).getTime() > now.getTime())
       .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
       
     if (upcoming.length > 0) {

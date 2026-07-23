@@ -8,7 +8,7 @@ echo [1/2] Starting MT5 Python Backend...
 start "Forex MT5 Backend" cmd /k "cd backend && start.bat"
 
 echo [2/2] Starting Next.js Web Dashboard...
-start "Forex Web Dashboard" cmd /k "cd frontend && npm run dev"
+start "Forex Web Dashboard" cmd /k "cd frontend && npm start"
 
 echo.
 echo ==========================================

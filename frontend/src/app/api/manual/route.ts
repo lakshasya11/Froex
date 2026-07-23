@@ -8,7 +8,7 @@ const execAsync = promisify(exec);
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { direction, count, lotSize, sl, tp } = body;
+    const { direction, count, lotSize, sl, tp, timeframe, trailTrigger, trailGap } = body;
 
     if (!direction || !['BUY', 'SELL'].includes(direction)) {
       return NextResponse.json({ success: false, error: 'Invalid direction' }, { status: 400 });
@@ -19,13 +19,16 @@ export async function POST(request: Request) {
     const safeLotSize = lotSize || 0.05;
     const safeSl = sl || 10.00;
     const safeTp = tp || 3.00;
+    const safeTf = timeframe || 'M5';
+    const safeTrigger = trailTrigger || 1.50;
+    const safeGap = trailGap || 0.80;
 
     // The frontend is in E:\Forex_US\Forex5M-2\frontend
     // We want the cwd to be the backend directory where manual.py is located.
     const cwdPath = path.resolve(process.cwd(), '../backend');
     
-    // Command: python manual.py buy 1 0.05 10 3
-    const command = `python manual.py ${direction} ${safeCount} ${safeLotSize} ${safeSl} ${safeTp}`;
+    // Command: python manual.py buy 1 0.05 10 3 M5 1.5 0.8
+    const command = `python manual.py ${direction} ${safeCount} ${safeLotSize} ${safeSl} ${safeTp} ${safeTf} ${safeTrigger} ${safeGap}`;
     
     console.log(`Executing manual trade: ${command} in ${cwdPath}`);
 

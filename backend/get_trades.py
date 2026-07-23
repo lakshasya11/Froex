@@ -4,8 +4,11 @@ import sys
 import os
 from datetime import datetime, timezone
 
+
 def get_trades(filter_type, custom_date):
-    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'trade_journal.db')
+    db_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "trade_journal.db"
+    )
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -13,15 +16,15 @@ def get_trades(filter_type, custom_date):
     where_clause = ""
     params = []
 
-    if filter_type != 'all':
+    if filter_type != "all":
         target_date = ""
         if custom_date:
             target_date = custom_date
-        elif filter_type == 'today':
+        elif filter_type == "today":
             target_date = datetime.now().strftime("%Y-%m-%d")
-        elif filter_type == 'yesterday':
+        elif filter_type == "yesterday":
             pass
-            
+
         if target_date:
             where_clause = "WHERE date(entry_time) = ?"
             params.append(target_date)
@@ -63,7 +66,7 @@ def get_trades(filter_type, custom_date):
         cursor.execute("SELECT balance FROM account_state WHERE id = 1")
         row = cursor.fetchone()
         if row:
-            balance = row['balance']
+            balance = row["balance"]
     except:
         pass
 
@@ -74,11 +77,12 @@ def get_trades(filter_type, custom_date):
         "stats": stats,
         "sessionStats": session_stats,
         "balance": balance,
-        "trades": trades
+        "trades": trades,
     }
 
+
 if __name__ == "__main__":
-    f_type = sys.argv[1] if len(sys.argv) > 1 else 'today'
-    c_date = sys.argv[2] if len(sys.argv) > 2 else ''
+    f_type = sys.argv[1] if len(sys.argv) > 1 else "today"
+    c_date = sys.argv[2] if len(sys.argv) > 2 else ""
     result = get_trades(f_type, c_date)
     print(json.dumps(result))

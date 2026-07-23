@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import CountUp from 'react-countup';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Area, AreaChart, ComposedChart, Bar, BarChart, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Area, AreaChart, ComposedChart, Bar, BarChart, Legend, ReferenceLine } from 'recharts';
 
 import { 
   TrendingUp, 
@@ -15,7 +15,8 @@ import {
   Clock,
   Calendar,
   Globe,
-  AlertCircle
+  AlertCircle,
+  Copy
 } from 'lucide-react';
 
 interface Trade {
@@ -249,6 +250,25 @@ export default function Home() {
       }
     ];
   }, [dbSessionStats]);
+
+  const handleCopyTrades = () => {
+    if (!filteredTrades || filteredTrades.length === 0) {
+      toast.error("No trades to copy");
+      return;
+    }
+    const header = "TIME\tDIRECTION\tLOT SIZE\tENTRY\tEXIT\tREASON\tPOINTS\tP&L";
+    const rows = filteredTrades.map(trade => {
+      const utcDate = new Date(trade.entry_time.replace(' ', 'T') + 'Z');
+      const timeStr = !isNaN(utcDate.getTime()) 
+        ? new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).format(utcDate)
+        : trade.entry_time;
+      return `${timeStr}\t${trade.direction}\t${trade.volume.toFixed(2)}\t${trade.entry_price.toFixed(2)}\t${trade.exit_price.toFixed(2)}\t${trade.exit_reason}\t${trade.profit_points > 0 ? '+' : ''}${trade.profit_points.toFixed(2)}\t${trade.profit_dollars > 0 ? '+$' : '-$'}${Math.abs(trade.profit_dollars).toFixed(2)}`;
+    });
+    const copyText = [header, ...rows].join("\n");
+    navigator.clipboard.writeText(copyText)
+      .then(() => toast.success("Trade data copied!"))
+      .catch(() => toast.error("Failed to copy trades"));
+  };
 
   const executeTrade = async (direction: string) => {
     // First/Last 15 seconds safety check
@@ -570,27 +590,27 @@ export default function Home() {
           }`}>
             <div className={`absolute -right-6 -top-6 w-24 h-24 rounded-full blur-2xl transition-colors ${
               marketState 
-                ? (marketState.bb_angle > 5 && marketState.supertrend === 'BULL' 
+                ? (marketState.trend_label === 'UP' 
                     ? 'bg-emerald-500/5 group-hover:bg-emerald-500/5' 
-                    : marketState.bb_angle < -5 && marketState.supertrend === 'BEAR'
+                    : marketState.trend_label === 'DOWN'
                       ? 'bg-rose-500/5 group-hover:bg-rose-500/5'
                       : 'bg-amber-500/5 group-hover:bg-amber-500/10')
                 : 'bg-slate-500/5'
             }`}></div>
             <p className="text-slate-900 font-medium mb-1">Market Trend</p>
             <h2 className={`text-4xl font-bold tracking-tight capitalize ${
-               marketState 
-                ? (marketState.bb_angle > 5 && marketState.supertrend === 'BULL' 
+                marketState 
+                ? (marketState.trend_label === 'UP' 
                     ? 'text-emerald-600' 
-                    : marketState.bb_angle < -5 && marketState.supertrend === 'BEAR'
+                    : marketState.trend_label === 'DOWN'
                       ? 'text-rose-600'
                       : 'text-amber-500')
                 : 'text-slate-500'
             }`}>
               {marketState 
-                ? (marketState.bb_angle > 5 && marketState.supertrend === 'BULL' 
+                ? (marketState.trend_label === 'UP' 
                     ? 'UPTREND' 
-                    : marketState.bb_angle < -5 && marketState.supertrend === 'BEAR'
+                    : marketState.trend_label === 'DOWN'
                       ? 'DOWNTREND'
                       : 'SIDEWAYS')
                 : 'WAITING'}
@@ -598,7 +618,7 @@ export default function Home() {
             <div className="mt-4 flex items-center gap-2 text-sm font-bold text-slate-500">
               {marketState ? (
                 <span className={marketState.supertrend === 'BULL' ? 'text-emerald-600/70' : marketState.supertrend === 'BEAR' ? 'text-rose-600/70' : ''}>
-                  {marketState.supertrend} • {marketState.bb_angle > 0 ? '+' : ''}{marketState.bb_angle.toFixed(1)}°
+                  {marketState.supertrend} &bull; {marketState.bb_angle > 0 ? '+' : ''}{marketState.bb_angle.toFixed(1)}&deg;
                 </span>
               ) : (
                 <span className="animate-pulse">Loading Live Data...</span>
@@ -689,7 +709,7 @@ export default function Home() {
                   activeTrade.profit_dollars >= 0 ? 'text-emerald-600/80' : 'text-red-600/80'
                 }`}>
                   <span>{activeTrade.profit_points >= 0 ? '+' : ''}{activeTrade.profit_points.toFixed(1)} pts</span>
-                  <span className="text-slate-500">•</span>
+                  <span className="text-slate-500">&bull;</span>
                   <div className="flex items-center gap-1 text-slate-500">
                     <Clock className="w-3.5 h-3.5" />
                     <LiveTimer openTime={activeTrade.open_time} />
@@ -728,7 +748,7 @@ export default function Home() {
                 <div className="bg-white/60 p-3 rounded-xl border border-slate-200/50 flex flex-col items-center justify-center">
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">BB Angle</span>
                   <span className={`text-lg font-bold ${activeTrade.bb_angle > 5 ? 'text-emerald-600' : activeTrade.bb_angle < -5 ? 'text-rose-600' : 'text-slate-900'}`}>
-                    {activeTrade.bb_angle > 0 ? '+' : ''}{activeTrade.bb_angle.toFixed(1)}°
+                    {activeTrade.bb_angle > 0 ? '+' : ''}{activeTrade.bb_angle.toFixed(1)}&deg;
                   </span>
                 </div>
                 <div className="bg-white/60 p-3 rounded-xl border border-slate-200/50 flex flex-col items-center justify-center">
@@ -800,7 +820,7 @@ export default function Home() {
                         contentStyle={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
                         itemStyle={{ color: '#0f172a', fontWeight: 'bold' }}
                         labelStyle={{ color: '#64748b', marginBottom: '4px' }}
-                        formatter={(value: number | string, name: string) => {
+                        formatter={(value: any, name: any) => {
                           const labelText = name === 'pnl' ? 'Net P&L' : name === 'profit' ? 'Trade Profit' : name;
                           return [`$${Number(value).toFixed(2)}`, labelText];
                         }}
@@ -813,6 +833,20 @@ export default function Home() {
                         strokeWidth={2} 
                         dot={false}
                         activeDot={{ r: 6, fill: '#ffffff', stroke: '#10b981', strokeWidth: 2 }} 
+                      />
+                      <ReferenceLine 
+                        y={Math.max(...chartData.map(d => d.pnl))} 
+                        label={{ position: 'top', value: `High: $${Math.max(...chartData.map(d => d.pnl)).toFixed(2)}`, fill: '#10b981', fontSize: 12, fontWeight: 'bold' }} 
+                        stroke="#10b981" 
+                        strokeDasharray="3 3" 
+                        opacity={0.5} 
+                      />
+                      <ReferenceLine 
+                        y={Math.min(...chartData.map(d => d.pnl))} 
+                        label={{ position: 'bottom', value: `Low: $${Math.min(...chartData.map(d => d.pnl)).toFixed(2)}`, fill: '#ef4444', fontSize: 12, fontWeight: 'bold' }} 
+                        stroke="#ef4444" 
+                        strokeDasharray="3 3" 
+                        opacity={0.5} 
                       />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -830,7 +864,7 @@ export default function Home() {
             <div className="h-[300px] w-full">
               {(() => {
 
-                const CustomXAxisTick = ({ x, y, payload }: { x?: number, y?: number, payload?: unknown }) => {
+                const CustomXAxisTick = ({ x, y, payload }: { x?: number, y?: number, payload?: any }) => {
                   let brokerTime = '';
                   let istTime = '';
                   if (payload.value === 'Asian') { brokerTime = '00:00 - 08:59'; istTime = '05:30 - 14:29 IST'; }
@@ -846,7 +880,7 @@ export default function Home() {
                   );
                 };
                 
-                const CustomSessionTooltip = ({ active, payload }: { active?: boolean, payload?: unknown[] }) => {
+                const CustomSessionTooltip = ({ active, payload }: { active?: boolean, payload?: any }) => {
                   if (active && payload && payload.length) {
                     const data = payload[0].payload;
                     return (
@@ -977,6 +1011,16 @@ export default function Home() {
               }`}
             >
               LOSS
+            </button>
+
+            <div className="w-px h-5 bg-slate-200 mx-1"></div>
+
+            <button
+              onClick={handleCopyTrades}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border bg-white shadow-sm text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-900 flex items-center gap-1.5"
+              title="Copy Trade Data"
+            >
+              <Copy className="w-3.5 h-3.5" /> Copy
             </button>
           </div>
           )}

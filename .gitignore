@@ -48,6 +48,11 @@ account_info.txt
 *.db-shm
 *.db-wal
 *.csv
+*_cache.json
 backend/*_cache.json
 backend/active_trade.json
 backend/market_state.json
+
+# AI Assistant
+.agents/
+scratch/
