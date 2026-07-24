@@ -137,7 +137,7 @@ class EnhancedTradingStrategy:
                 return score
 
             # 4. EMA 9 Angle Filter
-            if abs(_ema_9_angle) < EMA_ANGLE_THRESHOLD:
+            if _ema_9_angle < EMA_ANGLE_THRESHOLD:
                 score.block_reason = "HARD_RULE_EMA9_ANGLE_WEAK"
                 return score
 
@@ -176,7 +176,7 @@ class EnhancedTradingStrategy:
                 return score
 
             # 4. EMA 9 Angle Filter
-            if abs(_ema_9_angle) < EMA_ANGLE_THRESHOLD:
+            if _ema_9_angle > -EMA_ANGLE_THRESHOLD:
                 score.block_reason = "HARD_RULE_EMA9_ANGLE_WEAK"
                 return score
 
