@@ -16,7 +16,9 @@ import {
   Calendar,
   Globe,
   AlertCircle,
-  Copy
+  Copy,
+  Moon,
+  Sun
 } from 'lucide-react';
 
 interface Trade {
@@ -87,7 +89,7 @@ const LiveTimer = ({ openTime }: { openTime: number }) => {
     const interval = setInterval(update, 1000);
     return () => clearInterval(interval);
   }, [openTime]);
-  return <span className="font-mono text-slate-800 font-bold">{duration}</span>;
+  return <span className="font-mono text-slate-800 dark:text-slate-200 font-bold">{duration}</span>;
 };
 
 const CandleTimer = ({ timeframe = 'M5' }: { timeframe?: string }) => {
@@ -128,11 +130,11 @@ const ProgressBar = ({ entry, current, sl, tp, direction }: any) => {
   
   return (
     <div className="w-full mt-4">
-      <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
+      <div className="flex justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">
         <span>SL: {sl.toFixed(5)}</span>
         <span>TP: {tp.toFixed(5)}</span>
       </div>
-      <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden relative">
+      <div className="h-1.5 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden relative">
         <div className={`absolute top-0 left-0 h-full transition-all duration-1000 ${pct > 50 ? 'bg-emerald-500' : 'bg-red-500'}`} style={{ width: `${pct}%` }}></div>
       </div>
     </div>
@@ -159,6 +161,30 @@ export default function Home() {
   // Filtering state
   const [filterType, setFilterType] = useState('today');
   const [customDate, setCustomDate] = useState('');
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+        setIsDarkMode(true);
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    }
+  }, []);
+
+  const toggleDarkMode = () => {
+    if (isDarkMode) {
+      document.documentElement.classList.remove('dark');
+      localStorage.theme = 'light';
+      setIsDarkMode(false);
+    } else {
+      document.documentElement.classList.add('dark');
+      localStorage.theme = 'dark';
+      setIsDarkMode(true);
+    }
+  };
   const [viewMode, setViewMode] = useState<'trades' | 'news' | 'manual'>('trades');
   const [newsFilter, setNewsFilter] = useState<'upcoming' | 'past'>('upcoming');
   
@@ -416,7 +442,7 @@ export default function Home() {
 
   if (loading && !stats) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
         <div className="relative flex justify-center items-center">
           <div className="absolute animate-ping w-16 h-16 rounded-full bg-emerald-500/30"></div>
           <Activity className="w-8 h-8 text-emerald-600 animate-pulse" />
@@ -457,7 +483,7 @@ export default function Home() {
   const avgLoss = displayLosses > 0 ? grossLoss / displayLosses : 0;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 p-6 md:p-12 font-sans selection:bg-emerald-500/30 relative overflow-hidden">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-6 md:p-12 font-sans selection:bg-emerald-500/30 relative overflow-hidden">
       <Toaster position="bottom-right" />
       {/* AMBIENT BACKGROUND GLOWS */}
       <div className="absolute top-[-10%] left-[-5%] w-[40rem] h-[40rem] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none"></div>
@@ -466,19 +492,27 @@ export default function Home() {
       {/* HEADER */}
       <header className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center mb-12 relative z-10">
         <div>
-          <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 mb-2 flex items-center gap-3">
+          <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-3">
             <div className="p-2 bg-emerald-500/5 rounded-xl border border-emerald-500/20">
               <Activity className="text-emerald-600 w-8 h-8" />
             </div>
             Trading Terminal
           </h1>
-          <p className="text-slate-900 text-lg">Live Algorithm Performance Dashboard</p>
+          <p className="text-slate-900 dark:text-slate-100 text-lg">Live Algorithm Performance Dashboard</p>
         </div>
         
         <div className="mt-6 md:mt-0 flex flex-col md:flex-row items-center gap-4">
           
+          <button 
+            onClick={toggleDarkMode}
+            className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors"
+            title="Toggle Dark Mode"
+          >
+            {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          </button>
+
           {/* DATE CONTROLS */}
-          <div className="flex items-center gap-1 bg-white shadow-sm p-1.5 rounded-xl border border-slate-200 backdrop-blur-xl">
+          <div className="flex items-center gap-1 bg-white dark:bg-slate-800 shadow-sm dark:shadow-none p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 backdrop-blur-xl">
             {['today', 'yesterday', 'this-week', 'last-week', 'this-month', 'last-6-months', 'all'].map((f) => (
               <button
                 key={f}
@@ -489,7 +523,7 @@ export default function Home() {
                 className={`whitespace-nowrap shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-medium capitalize transition-all duration-300 ${
                   filterType === f 
                     ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.1)]'
-                    : 'text-slate-900 hover:text-slate-900 hover:bg-slate-100/50 border border-transparent'
+                    : 'text-slate-900 dark:text-slate-100 hover:text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:bg-slate-800/50 border border-transparent'
                 }`}
               >
                 {f === 'all' ? 'All Time' : f.replace(/-/g, ' ')}
@@ -499,7 +533,7 @@ export default function Home() {
             <div className="shrink-0 w-px h-6 bg-slate-800 mx-1"></div>
             
             <div className="relative flex shrink-0 items-center group cursor-pointer" title="Select Custom Date">
-              <Calendar className={`absolute left-3 w-4 h-4 pointer-events-none transition-colors ${filterType === 'custom' ? 'text-emerald-600' : 'text-slate-900 group-hover:text-slate-900'}`} />
+              <Calendar className={`absolute left-3 w-4 h-4 pointer-events-none transition-colors ${filterType === 'custom' ? 'text-emerald-600' : 'text-slate-900 dark:text-slate-100 group-hover:text-slate-900 dark:text-slate-100'}`} />
               <input 
                 type="date"
                 value={customDate}
@@ -512,26 +546,26 @@ export default function Home() {
                 className={`pl-9 pr-3 py-1.5 bg-transparent text-sm rounded-lg outline-none cursor-pointer transition-all duration-300 w-[140px] ${
                   filterType === 'custom'
                     ? 'text-emerald-600 bg-emerald-500/5 border border-emerald-500/30'
-                    : 'text-transparent border border-transparent hover:bg-slate-100/50'
+                    : 'text-transparent border border-transparent hover:bg-slate-100 dark:bg-slate-800/50'
                 } [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:left-0`}
               />
               {filterType !== 'custom' && (
-                <span className="absolute left-9 pointer-events-none text-sm font-medium text-slate-900 group-hover:text-slate-900 transition-colors">Custom</span>
+                <span className="absolute left-9 pointer-events-none text-sm font-medium text-slate-900 dark:text-slate-100 group-hover:text-slate-900 dark:text-slate-100 transition-colors">Custom</span>
               )}
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className={`px-3 py-2 bg-white shadow-sm rounded-full border flex items-center gap-2 h-[42px] transition-colors border-slate-200`}>
-              <div className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1">
+            <div className={`px-3 py-2 bg-white dark:bg-slate-800 shadow-sm dark:shadow-none rounded-full border flex items-center gap-2 h-[42px] transition-colors border-slate-200 dark:border-slate-700`}>
+              <div className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-wider flex items-center gap-1">
                 <span>{marketState?.timeframe || 'M5'} Candle:</span>
-                <span className="text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded text-[11px]"><CandleTimer timeframe={marketState?.timeframe || 'M5'} /></span>
+                <span className="text-slate-900 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[11px]"><CandleTimer timeframe={marketState?.timeframe || 'M5'} /></span>
               </div>
             </div>
 
-            <div className={`px-4 py-2 bg-white shadow-sm rounded-full border flex items-center gap-2 h-[42px] transition-colors ${isOffline ? 'border-rose-200 bg-rose-50' : 'border-slate-200'}`}>
+            <div className={`px-4 py-2 bg-white dark:bg-slate-800 shadow-sm dark:shadow-none rounded-full border flex items-center gap-2 h-[42px] transition-colors ${isOffline ? 'border-rose-200 bg-rose-50' : 'border-slate-200 dark:border-slate-700'}`}>
               <div className={`w-2.5 h-2.5 rounded-full ${isOffline ? 'bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]' : 'bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]'}`}></div>
-              <span className={`text-sm font-medium ${isOffline ? 'text-rose-700' : 'text-slate-900'}`}>{isOffline ? 'Offline' : 'Live'}</span>
+              <span className={`text-sm font-medium ${isOffline ? 'text-rose-700' : 'text-slate-900 dark:text-slate-100'}`}>{isOffline ? 'Offline' : 'Live'}</span>
             </div>
           </div>
 
@@ -542,22 +576,22 @@ export default function Home() {
       <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12 relative z-10">
         
         {/* Net P&L */}
-        <div className="bg-gradient-to-br from-white to-slate-50 p-6 rounded-2xl border border-slate-200 shadow-2xl relative overflow-hidden group hover:border-emerald-500/30 transition-colors duration-500">
+        <div className="bg-gradient-to-br from-white dark:from-slate-800 to-slate-50 dark:to-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl dark:shadow-none relative overflow-hidden group hover:border-emerald-500/30 transition-colors duration-500">
           <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl group-hover:bg-emerald-500/5 transition-colors"></div>
-          <p className="text-slate-900 font-medium mb-1">Net P&L</p>
+          <p className="text-slate-900 dark:text-slate-100 font-medium mb-1">Net P&L</p>
           <h2 className={`text-4xl font-bold tracking-tight ${displayPnL >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
             ${displayPnL.toFixed(2)}
           </h2>
-          <div className="mt-4 flex items-center gap-2 text-sm text-slate-900">
+          <div className="mt-4 flex items-center gap-2 text-sm text-slate-900 dark:text-slate-100">
             <DollarSign className="w-4 h-4" /> Filtered Profit
           </div>
         </div>
 
         {/* Profit Rate */}
-        <div className="bg-gradient-to-br from-white to-slate-50 p-6 rounded-2xl border border-slate-200 shadow-2xl relative overflow-hidden group hover:border-blue-500/30 transition-colors duration-500">
+        <div className="bg-gradient-to-br from-white dark:from-slate-800 to-slate-50 dark:to-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl dark:shadow-none relative overflow-hidden group hover:border-blue-500/30 transition-colors duration-500">
           <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-500/5 rounded-full blur-2xl group-hover:bg-blue-500/5 transition-colors"></div>
-          <p className="text-slate-900 font-medium mb-1">Profit Rate</p>
-          <h2 className="text-4xl font-bold tracking-tight text-slate-900">
+          <p className="text-slate-900 dark:text-slate-100 font-medium mb-1">Profit Rate</p>
+          <h2 className="text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             {displayWinRate}%
           </h2>
           <div className="mt-4 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
@@ -566,10 +600,10 @@ export default function Home() {
         </div>
 
         {/* Total Trades */}
-        <div className="bg-gradient-to-br from-white to-slate-50 p-6 rounded-2xl border border-slate-200 shadow-2xl relative overflow-hidden group hover:border-purple-500/30 transition-colors duration-500">
+        <div className="bg-gradient-to-br from-white dark:from-slate-800 to-slate-50 dark:to-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl dark:shadow-none relative overflow-hidden group hover:border-purple-500/30 transition-colors duration-500">
           <div className="absolute -right-6 -top-6 w-24 h-24 bg-purple-500/5 rounded-full blur-2xl group-hover:bg-purple-500/10 transition-colors"></div>
-          <p className="text-slate-900 font-medium mb-1">Trades</p>
-          <h2 className="text-4xl font-bold tracking-tight text-slate-900">
+          <p className="text-slate-900 dark:text-slate-100 font-medium mb-1">Trades</p>
+          <h2 className="text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             {displayTotal}
           </h2>
           <div className="mt-4 flex items-center gap-4 text-sm font-medium">
@@ -580,14 +614,14 @@ export default function Home() {
 
         {/* Conditional Card: Market Trend OR Active Filter */}
         {filterType === 'today' ? (
-          <div className={`bg-gradient-to-br from-white to-slate-50 p-6 rounded-2xl border shadow-2xl relative overflow-hidden group transition-colors duration-500 ${
+          <div className={`bg-gradient-to-br from-white dark:from-slate-800 to-slate-50 dark:to-slate-900 p-6 rounded-2xl border shadow-2xl dark:shadow-none relative overflow-hidden group transition-colors duration-500 ${
             marketState 
               ? (marketState.trend_label === 'UP' 
                   ? 'border-emerald-500/30 hover:border-emerald-500/60' 
                   : marketState.trend_label === 'DOWN'
                     ? 'border-rose-500/30 hover:border-rose-500/60'
                     : 'border-amber-500/30 hover:border-amber-500/60')
-              : 'border-slate-200'
+              : 'border-slate-200 dark:border-slate-700'
           }`}>
             <div className={`absolute -right-6 -top-6 w-24 h-24 rounded-full blur-2xl transition-colors ${
               marketState 
@@ -596,9 +630,9 @@ export default function Home() {
                     : marketState.trend_label === 'DOWN'
                       ? 'bg-rose-500/5 group-hover:bg-rose-500/5'
                       : 'bg-amber-500/5 group-hover:bg-amber-500/10')
-                : 'bg-slate-500/5'
+                : 'bg-slate-50 dark:bg-slate-9000/5'
             }`}></div>
-            <p className="text-slate-900 font-medium mb-1">Market Trend</p>
+            <p className="text-slate-900 dark:text-slate-100 font-medium mb-1">Market Trend</p>
             <h2 className={`text-4xl font-bold tracking-tight capitalize ${
                 marketState 
                 ? (marketState.trend_label === 'UP' 
@@ -606,7 +640,7 @@ export default function Home() {
                     : marketState.trend_label === 'DOWN'
                       ? 'text-rose-600'
                       : 'text-amber-500')
-                : 'text-slate-500'
+                : 'text-slate-500 dark:text-slate-400'
             }`}>
               {marketState 
                 ? (marketState.trend_label === 'UP' 
@@ -616,18 +650,18 @@ export default function Home() {
                       : 'SIDEWAYS')
                 : 'WAITING'}
             </h2>
-            <div className="mt-4 flex items-center gap-2 text-sm font-bold text-slate-500">
+            <div className="mt-4 flex items-center gap-2 text-sm font-bold text-slate-500 dark:text-slate-400">
               {!marketState && <span className="animate-pulse">Loading Live Data...</span>}
             </div>
           </div>
         ) : (
-          <div className="bg-gradient-to-br from-white to-slate-50 p-6 rounded-2xl border border-slate-200 shadow-2xl relative overflow-hidden group hover:border-orange-500/30 transition-colors duration-500">
+          <div className="bg-gradient-to-br from-white dark:from-slate-800 to-slate-50 dark:to-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl dark:shadow-none relative overflow-hidden group hover:border-orange-500/30 transition-colors duration-500">
             <div className="absolute -right-6 -top-6 w-24 h-24 bg-orange-500/5 rounded-full blur-2xl group-hover:bg-orange-500/10 transition-colors"></div>
-            <p className="text-slate-900 font-medium mb-1">Active Filter</p>
+            <p className="text-slate-900 dark:text-slate-100 font-medium mb-1">Active Filter</p>
             <h2 className="text-4xl font-bold tracking-tight text-orange-500 capitalize">
               {filterType === 'all' ? 'All Time' : filterType.replace(/-/g, ' ')}
             </h2>
-            <div className="mt-4 flex items-center gap-2 text-sm text-slate-500 font-medium">
+            <div className="mt-4 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 font-medium">
               <span className="w-2 h-2 rounded-full bg-slate-400"></span>
               Historical View
             </div>
@@ -638,31 +672,31 @@ export default function Home() {
       {/* DETAILED STATS ROW */}
       <div className={`max-w-7xl mx-auto grid grid-cols-2 ${filterType === 'today' ? 'md:grid-cols-6 lg:grid-cols-6' : 'md:grid-cols-5 lg:grid-cols-5'} gap-4 mb-12 relative z-10`}>
         {filterType === 'today' && (
-          <div className="bg-white shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 shadow-lg">
-            <p className="text-slate-900 text-xs font-semibold uppercase tracking-wider mb-1 flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5" /> Live Balance</p>
-            <p className="text-xl font-bold text-slate-900">{balance !== null ? `$${balance.toFixed(2)}` : '...'}</p>
+          <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-none">
+            <p className="text-slate-900 dark:text-slate-100 text-xs font-semibold uppercase tracking-wider mb-1 flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5" /> Live Balance</p>
+            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{balance !== null ? `$${balance.toFixed(2)}` : '...'}</p>
           </div>
         )}
-        <div className="bg-white shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 shadow-lg">
-          <p className="text-slate-900 text-xs font-semibold uppercase tracking-wider mb-1">Gross Profit</p>
+        <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-none">
+          <p className="text-slate-900 dark:text-slate-100 text-xs font-semibold uppercase tracking-wider mb-1">Gross Profit</p>
           <p className="text-xl font-bold text-emerald-600">+${grossProfit.toFixed(2)}</p>
         </div>
-        <div className="bg-white shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 shadow-lg">
-          <p className="text-slate-900 text-xs font-semibold uppercase tracking-wider mb-1">Gross Loss</p>
+        <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-none">
+          <p className="text-slate-900 dark:text-slate-100 text-xs font-semibold uppercase tracking-wider mb-1">Gross Loss</p>
           <p className="text-xl font-bold text-rose-600">-${Math.abs(grossLoss).toFixed(2)}</p>
         </div>
-        <div className="bg-white shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 shadow-lg">
-          <p className="text-slate-900 text-xs font-semibold uppercase tracking-wider mb-1">Profit Factor</p>
-          <p className={`text-xl font-bold ${grossProfit > Math.abs(grossLoss) ? 'text-emerald-600' : (grossProfit === Math.abs(grossLoss) && grossProfit > 0 ? 'text-slate-900' : 'text-rose-600')}`}>
+        <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-none">
+          <p className="text-slate-900 dark:text-slate-100 text-xs font-semibold uppercase tracking-wider mb-1">Profit Factor</p>
+          <p className={`text-xl font-bold ${grossProfit > Math.abs(grossLoss) ? 'text-emerald-600' : (grossProfit === Math.abs(grossLoss) && grossProfit > 0 ? 'text-slate-900 dark:text-slate-100' : 'text-rose-600')}`}>
             {Math.abs(grossLoss) > 0 ? (grossProfit / Math.abs(grossLoss)).toFixed(2) : (grossProfit > 0 ? '∞' : '0.00')}
           </p>
         </div>
-        <div className="bg-white shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 shadow-lg">
-          <p className="text-slate-900 text-xs font-semibold uppercase tracking-wider mb-1">Avg Win</p>
+        <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-none">
+          <p className="text-slate-900 dark:text-slate-100 text-xs font-semibold uppercase tracking-wider mb-1">Avg Win</p>
           <p className="text-xl font-bold text-emerald-600">$<CountUp end={avgWin} decimals={2} duration={1.5} preserveValue /></p>
         </div>
-        <div className="bg-white shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 shadow-lg">
-          <p className="text-slate-900 text-xs font-semibold uppercase tracking-wider mb-1">Avg Loss</p>
+        <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-none">
+          <p className="text-slate-900 dark:text-slate-100 text-xs font-semibold uppercase tracking-wider mb-1">Avg Loss</p>
           <p className="text-xl font-bold text-rose-600">-$<CountUp end={Math.abs(avgLoss)} decimals={2} duration={1.5} preserveValue /></p>
         </div>
       </div>
@@ -670,7 +704,7 @@ export default function Home() {
       {/* ACTIVE TRADE DISPLAY BOX */}
       {filterType === 'today' && activeTrades.length > 0 && activeTrades.map((activeTrade, idx) => (
         <div key={activeTrade.ticket || idx} className="max-w-7xl mx-auto mb-8 relative z-10 animate-in fade-in slide-in-from-top-4 duration-500">
-          <div className={`p-6 rounded-2xl border backdrop-blur-xl shadow-lg relative overflow-hidden ${
+          <div className={`p-6 rounded-2xl border backdrop-blur-xl shadow-lg dark:shadow-none relative overflow-hidden ${
             activeTrade.profit_dollars >= 0 
               ? 'bg-emerald-500/5 border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.15)]' 
               : 'bg-red-500/10 border-red-500/30 shadow-[0_0_30px_rgba(239,68,68,0.15)]'
@@ -689,8 +723,8 @@ export default function Home() {
                   }`}>
                     {activeTrade.direction}
                   </div>
-                  <span className="text-slate-900 font-medium opacity-70 text-sm">#{activeTrade.ticket}</span>
-                  <div className="flex items-center gap-1 ml-2 text-xs font-bold px-2 py-0.5 rounded bg-slate-200">
+                  <span className="text-slate-900 dark:text-slate-100 font-medium opacity-70 text-sm">#{activeTrade.ticket}</span>
+                  <div className="flex items-center gap-1 ml-2 text-xs font-bold px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700">
                     <Activity className="w-3 h-3" /> {activeTrade.volume.toFixed(2)} LOTS
                   </div>
                 </div>
@@ -704,8 +738,8 @@ export default function Home() {
                   activeTrade.profit_dollars >= 0 ? 'text-emerald-600/80' : 'text-red-600/80'
                 }`}>
                   <span>{activeTrade.profit_points >= 0 ? '+' : ''}{activeTrade.profit_points.toFixed(1)} pts</span>
-                  <span className="text-slate-500">&bull;</span>
-                  <div className="flex items-center gap-1 text-slate-500">
+                  <span className="text-slate-500 dark:text-slate-400">&bull;</span>
+                  <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
                     <Clock className="w-3.5 h-3.5" />
                     <LiveTimer openTime={activeTrade.open_time} />
                   </div>
@@ -724,20 +758,20 @@ export default function Home() {
               
               {/* Right Side: Metrics Grid */}
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 w-full md:w-auto flex-1">
-                <div className="bg-white/60 p-3 rounded-xl border border-slate-200/50 flex flex-col items-center justify-center">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Entry</span>
-                  <span className="text-lg font-bold text-slate-900">{activeTrade.entry_price.toFixed(2)}</span>
+                <div className="bg-white dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/50 flex flex-col items-center justify-center">
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1">Entry</span>
+                  <span className="text-lg font-bold text-slate-900 dark:text-slate-100">{activeTrade.entry_price.toFixed(2)}</span>
                 </div>
-                <div className="bg-white/60 p-3 rounded-xl border border-slate-200/50 flex flex-col items-center justify-center">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Current</span>
-                  <span className="text-lg font-bold text-slate-900">{activeTrade.current_price.toFixed(2)}</span>
+                <div className="bg-white dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/50 flex flex-col items-center justify-center">
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1">Current</span>
+                  <span className="text-lg font-bold text-slate-900 dark:text-slate-100">{activeTrade.current_price.toFixed(2)}</span>
                 </div>
-                <div className="bg-white/60 p-3 rounded-xl border border-slate-200/50 flex flex-col items-center justify-center">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Take Profit</span>
+                <div className="bg-white dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/50 flex flex-col items-center justify-center">
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1">Take Profit</span>
                   <span className="text-lg font-bold text-emerald-600">{activeTrade.tp !== undefined && activeTrade.tp > 0 ? activeTrade.tp.toFixed(2) : 'NONE'}</span>
                 </div>
-                <div className="bg-white/60 p-3 rounded-xl border border-slate-200/50 flex flex-col items-center justify-center">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Stop Loss</span>
+                <div className="bg-white dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/50 flex flex-col items-center justify-center">
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1">Stop Loss</span>
                   <span className="text-lg font-bold text-rose-600">{activeTrade.sl !== undefined && activeTrade.sl > 0 ? activeTrade.sl.toFixed(2) : 'NONE'}</span>
                 </div>
               </div>
@@ -747,11 +781,11 @@ export default function Home() {
                 <div className={`p-3 rounded-xl border flex items-center justify-center font-bold tracking-wide text-xs ${
                   activeTrade.is_higher ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 
                   activeTrade.is_lower ? 'bg-rose-50 border-rose-200 text-rose-700' : 
-                  'bg-slate-100 border-slate-200 text-slate-600'
+                  'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
                 }`}>
                   {activeTrade.is_higher ? 'HIGHER' : activeTrade.is_lower ? 'LOWER' : 'INSIDE RANGE'}
                 </div>
-                <button onClick={() => executeExit(activeTrade.ticket)} disabled={isTrading} className="p-3 rounded-xl bg-slate-900 border border-slate-800 hover:bg-rose-600 hover:border-rose-500 text-emerald-500 hover:text-white flex items-center justify-center font-bold text-xs tracking-widest transition-all duration-300 group disabled:opacity-50 shadow-lg hover:shadow-rose-500/20">
+                <button onClick={() => executeExit(activeTrade.ticket)} disabled={isTrading} className="p-3 rounded-xl bg-slate-900 border border-slate-800 hover:bg-rose-600 hover:border-rose-500 text-emerald-500 hover:text-white flex items-center justify-center font-bold text-xs tracking-widest transition-all duration-300 group disabled:opacity-50 shadow-lg dark:shadow-none hover:shadow-rose-500/20">
                   <div className="w-2 h-2 rounded-full bg-emerald-400 group-hover:hidden mr-2 animate-ping"></div>
                   <span className="group-hover:hidden">LIVE TRADE</span>
                   <span className="hidden group-hover:block uppercase">Close Trade</span>
@@ -766,7 +800,7 @@ export default function Home() {
       {viewMode === 'trades' && filteredTrades.length > 0 && (
         <div className="max-w-7xl mx-auto mb-8 relative z-10 grid grid-cols-1 lg:grid-cols-[60%_40%] gap-6">
           <div className="bg-blue-50 shadow-xl shadow-blue-100 rounded-2xl border border-blue-200 p-6">
-            <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-blue-600" />
               Equity Curve (Net P&L)
             </h3>
@@ -840,7 +874,7 @@ export default function Home() {
           
           {/* SESSION BAR GRAPH */}
           <div className="bg-blue-50 shadow-xl shadow-blue-100 rounded-2xl border border-blue-200 p-6">
-            <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-blue-600" />
               Session Performance
             </h3>
@@ -867,8 +901,8 @@ export default function Home() {
                   if (active && payload && payload.length) {
                     const data = payload[0].payload;
                     return (
-                      <div className="bg-white p-4 rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.1)] border border-slate-200 z-50 relative">
-                        <p className="font-bold text-slate-800 mb-2">{data.session} Session</p>
+                      <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.1)] border border-slate-200 dark:border-slate-700 z-50 relative">
+                        <p className="font-bold text-slate-800 dark:text-slate-200 mb-2">{data.session} Session</p>
                         <div className="space-y-1 text-sm">
                           <p className="text-emerald-600 font-semibold flex justify-between gap-4">
                             <span>Win: {data.Win}</span>
@@ -878,7 +912,7 @@ export default function Home() {
                             <span>Loss: {data.Loss}</span>
                             <span>-${data.lossAmount.toFixed(2)}</span>
                           </p>
-                          <div className="pt-2 mt-2 border-t border-slate-100 flex justify-between gap-4 font-bold text-slate-600">
+                          <div className="pt-2 mt-2 border-t border-slate-100 flex justify-between gap-4 font-bold text-slate-600 dark:text-slate-400">
                             <span>Profit Rate</span>
                             <span>{data.winRate}%</span>
                           </div>
@@ -911,17 +945,17 @@ export default function Home() {
       <div className="max-w-7xl mx-auto relative z-10">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
           <div className="flex items-center gap-4">
-            <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-slate-900" />
+            <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Clock className="w-5 h-5 text-slate-900 dark:text-slate-100" />
               Activity
             </h3>
-            <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
               <button
                 onClick={() => setViewMode('trades')}
                 className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${
                   viewMode === 'trades' 
-                    ? 'bg-blue-600 text-white shadow-lg' 
-                    : 'text-slate-900 hover:text-slate-900'
+                    ? 'bg-blue-600 text-white shadow-lg dark:shadow-none' 
+                    : 'text-slate-900 dark:text-slate-100 hover:text-slate-900 dark:text-slate-100'
                 }`}
               >
                 Trades
@@ -930,8 +964,8 @@ export default function Home() {
                 onClick={() => setViewMode('news')}
                 className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all flex items-center gap-1.5 ${
                   viewMode === 'news' 
-                    ? 'bg-indigo-600 text-white shadow-lg' 
-                    : 'text-slate-900 hover:text-slate-900'
+                    ? 'bg-indigo-600 text-white shadow-lg dark:shadow-none' 
+                    : 'text-slate-900 dark:text-slate-100 hover:text-slate-900 dark:text-slate-100'
                 }`}
               >
                 <Globe className="w-4 h-4" /> News
@@ -940,8 +974,8 @@ export default function Home() {
                 onClick={() => setViewMode('manual')}
                 className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all flex items-center gap-1.5 ${
                   viewMode === 'manual' 
-                    ? 'bg-rose-600 text-white shadow-lg' 
-                    : 'text-slate-900 hover:text-slate-900'
+                    ? 'bg-rose-600 text-white shadow-lg dark:shadow-none' 
+                    : 'text-slate-900 dark:text-slate-100 hover:text-slate-900 dark:text-slate-100'
                 }`}
               >
                 <Target className="w-4 h-4" /> Manual Trade
@@ -957,7 +991,7 @@ export default function Home() {
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${
                 dirFilter === 'BUY' 
                   ? 'bg-blue-500/20 text-blue-600 border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.2)]'
-                  : 'bg-white shadow-sm text-slate-900 border-slate-200 hover:bg-slate-100'
+                  : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'
               }`}
             >
               BUY
@@ -967,7 +1001,7 @@ export default function Home() {
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${
                 dirFilter === 'SELL' 
                   ? 'bg-fuchsia-500/20 text-fuchsia-600 border-fuchsia-500/50 shadow-[0_0_10px_rgba(217,70,239,0.2)]'
-                  : 'bg-white shadow-sm text-slate-900 border-slate-200 hover:bg-slate-100'
+                  : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'
               }`}
             >
               SELL
@@ -980,7 +1014,7 @@ export default function Home() {
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${
                 resultFilter === 'WIN' 
                   ? 'bg-emerald-500/20 text-emerald-600 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.2)]'
-                  : 'bg-white shadow-sm text-slate-900 border-slate-200 hover:bg-slate-100'
+                  : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'
               }`}
             >
               WIN
@@ -990,17 +1024,17 @@ export default function Home() {
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${
                 resultFilter === 'LOSS' 
                   ? 'bg-rose-500/20 text-rose-600 border-rose-500/50 shadow-[0_0_10px_rgba(244,63,94,0.2)]'
-                  : 'bg-white shadow-sm text-slate-900 border-slate-200 hover:bg-slate-100'
+                  : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'
               }`}
             >
               LOSS
             </button>
 
-            <div className="w-px h-5 bg-slate-200 mx-1"></div>
+            <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1"></div>
 
             <button
               onClick={handleCopyTrades}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border bg-white shadow-sm text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-900 flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800 hover:text-slate-900 dark:text-slate-100 flex items-center gap-1.5"
               title="Copy Trade Data"
             >
               <Copy className="w-3.5 h-3.5" /> Copy
@@ -1012,51 +1046,51 @@ export default function Home() {
       {/* MANUAL TRADING TERMINAL */}
       {viewMode === 'manual' && (
         <div className="max-w-7xl mx-auto mb-12 relative z-10">
-          <div className="bg-white shadow-xl shadow-slate-200/50 rounded-2xl border border-slate-200 shadow-2xl p-6 backdrop-blur-xl">
+          <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl dark:shadow-none p-6 backdrop-blur-xl">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
             
             <div className="flex-1">
-              <h3 className="text-xl font-bold text-slate-900 mb-1 flex items-center gap-2">
+              <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-1 flex items-center gap-2">
                 <Target className="w-5 h-5 text-emerald-600" />
                 Manual Execution Terminal
               </h3>
-              <p className="text-sm text-slate-900">Execute instant MT5 trades with bot trailing-stop handoff.</p>
+              <p className="text-sm text-slate-900 dark:text-slate-100">Execute instant MT5 trades with bot trailing-stop handoff.</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold text-slate-900 uppercase tracking-wider">Lot Size</label>
+                <label className="text-[10px] font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">Lot Size</label>
                 <input 
                   type="number" step="0.01" 
                   value={lotSize} onChange={(e) => setLotSize(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-900 w-24 outline-none focus:border-emerald-500/50"
+                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100 w-24 outline-none focus:border-emerald-500/50"
                 />
               </div>
               
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold text-slate-900 uppercase tracking-wider">Trades</label>
+                <label className="text-[10px] font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">Trades</label>
                 <input 
                   type="number" step="1" 
                   value={tradeCount} onChange={(e) => setTradeCount(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-900 w-20 outline-none focus:border-emerald-500/50"
+                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100 w-20 outline-none focus:border-emerald-500/50"
                 />
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold text-slate-900 uppercase tracking-wider">SL (Pts)</label>
+                <label className="text-[10px] font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">SL (Pts)</label>
                 <input 
                   type="number" step="0.1" 
                   value={slPoints} onChange={(e) => setSlPoints(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-900 w-24 outline-none focus:border-emerald-500/50"
+                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100 w-24 outline-none focus:border-emerald-500/50"
                 />
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold text-slate-900 uppercase tracking-wider">TP (Pts)</label>
+                <label className="text-[10px] font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">TP (Pts)</label>
                 <input 
                   type="number" step="0.1" 
                   value={tpPoints} onChange={(e) => setTpPoints(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-900 w-24 outline-none focus:border-emerald-500/50"
+                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100 w-24 outline-none focus:border-emerald-500/50"
                 />
               </div>
 
@@ -1100,23 +1134,23 @@ export default function Home() {
               news.isBlocked 
                 ? 'bg-rose-50 border-rose-200' 
                 : !news.enabled 
-                  ? 'bg-white shadow-xl shadow-slate-200/50 border-slate-200' 
+                  ? 'bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 border-slate-200 dark:border-slate-700' 
                   : 'bg-emerald-50 border-emerald-200'
             }`}>
               <div className="flex items-center gap-4">
-                <div className="flex-shrink-0 flex items-center justify-center w-12 h-12 rounded-full bg-white border border-slate-200">
-                  <Globe className={`w-6 h-6 ${news.isBlocked ? 'text-rose-500' : !news.enabled ? 'text-slate-900' : 'text-emerald-500'}`} />
+                <div className="flex-shrink-0 flex items-center justify-center w-12 h-12 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                  <Globe className={`w-6 h-6 ${news.isBlocked ? 'text-rose-500' : !news.enabled ? 'text-slate-900 dark:text-slate-100' : 'text-emerald-500'}`} />
                 </div>
                 <div>
-                  <h3 className="text-slate-900 font-bold text-lg flex items-center gap-2">
+                  <h3 className="text-slate-900 dark:text-slate-100 font-bold text-lg flex items-center gap-2">
                     Forex News Filter
                     <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
-                      news.isBlocked ? 'bg-rose-500/20 text-rose-600' : !news.enabled ? 'bg-slate-200 text-slate-600' : 'bg-emerald-500/20 text-emerald-600'
+                      news.isBlocked ? 'bg-rose-500/20 text-rose-600' : !news.enabled ? 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400' : 'bg-emerald-500/20 text-emerald-600'
                     }`}>
                       {news.status}
                     </span>
                   </h3>
-                  <p className="text-sm text-slate-900 mt-0.5">
+                  <p className="text-sm text-slate-900 dark:text-slate-100 mt-0.5">
                     {news.isBlocked ? (
                       <span className="text-rose-600 font-medium">Trading Paused: {news.reason}</span>
                     ) : !news.enabled ? (
@@ -1129,9 +1163,9 @@ export default function Home() {
               </div>
 
               {news.nextEvent && (
-                <div className="bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-200 flex flex-col items-end shadow-inner">
-                  <span className="text-xs font-semibold text-slate-900 uppercase tracking-wider mb-1">Next High Impact Event</span>
-                  <span className="text-sm font-bold text-slate-900">{news.nextEvent.title}</span>
+                <div className="bg-slate-50 dark:bg-slate-900 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col items-end shadow-inner">
+                  <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 uppercase tracking-wider mb-1">Next High Impact Event</span>
+                  <span className="text-sm font-bold text-slate-900 dark:text-slate-100">{news.nextEvent.title}</span>
                   <span className="text-xs font-medium text-amber-500 mt-0.5">
                     {new Date(news.nextEvent.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} ({(new Date(news.nextEvent.date).getTime() - new Date().getTime() > 0) ? Math.round((new Date(news.nextEvent.date).getTime() - new Date().getTime()) / 60000) : 0} mins away)
                   </span>
@@ -1145,7 +1179,7 @@ export default function Home() {
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${
                   newsFilter === 'upcoming' 
                     ? 'bg-blue-500/20 text-blue-600 border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.2)]'
-                    : 'bg-white shadow-sm text-slate-900 border-slate-200 hover:bg-slate-100'
+                    : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'
                 }`}
               >
                 UPCOMING
@@ -1155,17 +1189,17 @@ export default function Home() {
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${
                   newsFilter === 'past' 
                     ? 'bg-amber-500/20 text-amber-600 border-amber-500/50 shadow-[0_0_10px_rgba(245,158,11,0.2)]'
-                    : 'bg-white shadow-sm text-slate-900 border-slate-200 hover:bg-slate-100'
+                    : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'
                 }`}
               >
                 PAST
               </button>
             </div>
 
-            <div className="bg-white shadow-xl shadow-slate-200/50 rounded-2xl border border-slate-200 overflow-hidden backdrop-blur-xl">
+            <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden backdrop-blur-xl">
               <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
                 <table className="w-full text-left border-collapse relative">
-                  <thead className="bg-white/95 text-slate-900 text-xs uppercase tracking-wider font-semibold border-b border-slate-200 sticky top-0 z-20 backdrop-blur-sm">
+                  <thead className="bg-white dark:bg-slate-800/95 text-slate-900 dark:text-slate-100 text-xs uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-700 sticky top-0 z-20 backdrop-blur-sm">
                     <tr>
                       <th className="p-5">Time</th>
                       <th className="p-5">Impact</th>
@@ -1176,21 +1210,21 @@ export default function Home() {
                   </thead>
                   <tbody className="divide-y divide-slate-200">
                   {displayedNews.map((ev, i) => (
-                    <tr key={i} className="hover:bg-slate-50 transition-colors">
+                    <tr key={i} className="hover:bg-slate-50 dark:bg-slate-900 transition-colors">
                       <td className="p-5 whitespace-nowrap">
                         <div className="flex flex-col gap-0.5">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-slate-900 font-bold text-sm tracking-wide">
+                            <span className="text-slate-900 dark:text-slate-100 font-bold text-sm tracking-wide">
                               {new Date(ev.date).toLocaleTimeString('en-US', {timeZone: 'Asia/Kolkata', hour: 'numeric', minute:'2-digit', hour12: true})}
                             </span>
                             <span className="text-[10px] font-extrabold text-emerald-500 bg-emerald-500/5 px-1 py-0.5 rounded">IST</span>
                           </div>
                           <div className="flex items-center gap-1.5">
-                            <span className="text-slate-900 font-medium text-xs tracking-wide">
+                            <span className="text-slate-900 dark:text-slate-100 font-medium text-xs tracking-wide">
                               {new Date(ev.date).toLocaleTimeString('en-US', {timeZone: 'America/New_York', hour: 'numeric', minute:'2-digit', hour12: true})}
                             </span>
-                            <span className="text-[10px] font-bold text-slate-900">US Stock Time</span>
-                            <span className="text-slate-500 font-bold text-[11px] ml-1 tracking-wider">
+                            <span className="text-[10px] font-bold text-slate-900 dark:text-slate-100">US Stock Time</span>
+                            <span className="text-slate-500 dark:text-slate-400 font-bold text-[11px] ml-1 tracking-wider">
                               ({new Date(ev.date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})})
                             </span>
                           </div>
@@ -1203,14 +1237,14 @@ export default function Home() {
                           {ev.impact}
                         </span>
                       </td>
-                      <td className="p-5 text-sm font-bold text-slate-900">{ev.title}</td>
-                      <td className="p-5 text-right text-sm text-slate-900">{ev.forecast || '-'}</td>
-                      <td className="p-5 text-right text-sm text-slate-900">{ev.previous || '-'}</td>
+                      <td className="p-5 text-sm font-bold text-slate-900 dark:text-slate-100">{ev.title}</td>
+                      <td className="p-5 text-right text-sm text-slate-900 dark:text-slate-100">{ev.forecast || '-'}</td>
+                      <td className="p-5 text-right text-sm text-slate-900 dark:text-slate-100">{ev.previous || '-'}</td>
                     </tr>
                   ))}
                   {displayedNews.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="p-12 text-center text-slate-900">
+                      <td colSpan={5} className="p-12 text-center text-slate-900 dark:text-slate-100">
                         No {newsFilter} USD news events found for today.
                       </td>
                     </tr>
@@ -1221,11 +1255,11 @@ export default function Home() {
             </div>
           </div>
         ) : (
-        <div className="bg-white shadow-xl shadow-slate-200/50 rounded-2xl border border-slate-200 shadow-2xl overflow-hidden backdrop-blur-xl">
+        <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl dark:shadow-none overflow-hidden backdrop-blur-xl">
           <div className="overflow-x-auto overflow-y-auto max-h-[600px]">
             <table className="w-full text-left border-collapse relative">
               <thead className="sticky top-0 z-20">
-                <tr className="bg-slate-50/95 backdrop-blur-md text-slate-600 text-xs uppercase tracking-wider font-semibold border-b border-slate-200 shadow-sm">
+                <tr className="bg-slate-50 dark:bg-slate-900/95 backdrop-blur-md text-slate-600 dark:text-slate-400 text-xs uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-700 shadow-sm dark:shadow-none">
                   <th className="p-5">Time</th>
                   <th className="p-5">Direction</th>
                   <th className="p-5 text-right">Lot Size</th>
@@ -1267,17 +1301,17 @@ export default function Home() {
                   }
 
                   return (
-                  <tr key={trade.id} className="hover:bg-slate-50 transition-colors group">
+                  <tr key={trade.id} className="hover:bg-slate-50 dark:bg-slate-900 transition-colors group">
                     <td className="p-5 whitespace-nowrap">
                       <div className="flex flex-col gap-0.5">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-slate-900 font-bold text-sm tracking-wide">{istTime || stockTime}</span>
+                          <span className="text-slate-900 dark:text-slate-100 font-bold text-sm tracking-wide">{istTime || stockTime}</span>
                           <span className="text-[10px] font-extrabold text-emerald-500 bg-emerald-500/5 px-1 py-0.5 rounded">IST</span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-slate-900 font-medium text-xs tracking-wide">{stockTime}</span>
-                          <span className="text-[10px] font-bold text-slate-900">STOCK</span>
-                          <span className="text-slate-500 font-bold text-[11px] ml-1 tracking-wider">({dateStr})</span>
+                          <span className="text-slate-900 dark:text-slate-100 font-medium text-xs tracking-wide">{stockTime}</span>
+                          <span className="text-[10px] font-bold text-slate-900 dark:text-slate-100">STOCK</span>
+                          <span className="text-slate-500 dark:text-slate-400 font-bold text-[11px] ml-1 tracking-wider">({dateStr})</span>
                         </div>
                       </div>
                     </td>
@@ -1294,10 +1328,10 @@ export default function Home() {
                     <td className="p-5 text-right font-mono text-indigo-600 text-sm font-bold">
                       {trade.volume ? trade.volume.toFixed(2) : '-'}
                     </td>
-                    <td className="p-5 text-right font-mono text-slate-900 text-sm">{trade.entry_price.toFixed(2)}</td>
-                    <td className="p-5 text-right font-mono text-slate-900 text-sm">{trade.exit_price.toFixed(2)}</td>
+                    <td className="p-5 text-right font-mono text-slate-900 dark:text-slate-100 text-sm">{trade.entry_price.toFixed(2)}</td>
+                    <td className="p-5 text-right font-mono text-slate-900 dark:text-slate-100 text-sm">{trade.exit_price.toFixed(2)}</td>
                     <td className="p-5">
-                      <span className="text-xs font-medium text-slate-900 bg-slate-200 text-slate-700 px-2 py-1 rounded">
+                      <span className="text-xs font-medium text-slate-900 dark:text-slate-100 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-1 rounded">
                         {trade.exit_reason || 'Manual'}
                       </span>
                     </td>
@@ -1321,7 +1355,7 @@ export default function Home() {
                 })}
                 {filteredTrades.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="p-12 text-center text-slate-900">
+                    <td colSpan={8} className="p-12 text-center text-slate-900 dark:text-slate-100">
                       <Target className="w-12 h-12 mx-auto mb-4 opacity-20" />
                       No trades found for this filter.
                     </td>
