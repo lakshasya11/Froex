@@ -384,7 +384,12 @@ class TradingBot(EntryMixin, ExitMixin):
         try:
             import importlib
             while True:
-                importlib.reload(config)
+                try:
+                    if getattr(config, "__spec__", None) is not None:
+                        importlib.reload(config)
+                except Exception:
+                    pass
+                
                 MT5Connection.ensure_connection()
 
                 tick, analysis = self.get_market_data()
