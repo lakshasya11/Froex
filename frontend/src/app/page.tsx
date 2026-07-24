@@ -165,11 +165,12 @@ export default function Home() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      if (localStorage.theme === 'dark') {
         document.documentElement.classList.add('dark');
         setIsDarkMode(true);
       } else {
         document.documentElement.classList.remove('dark');
+        setIsDarkMode(false);
       }
     }
   }, []);
