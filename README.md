@@ -33,7 +33,7 @@ Contains the core algorithmic trading engine that connects to MetaTrader 5.
 | `main.py` | Main bot — runs the automated momentum algorithm |
 | `manual.py` | Bridge script for UI manual trades |
 | `entry.py` | Execution blocks and tick confirmations |
-| `strategy.py` | Momentum Score calculation, Supertrend & BB logic |
+| `strategy.py` | Momentum Score calculation, EMA 9 Angle & Trend logic |
 | `exit.py` | Exit conditions and position management |
 | `config.py` | All settings and thresholds (edit here to tune) |
 | `indicators.py` | Price action calculations |
@@ -50,8 +50,8 @@ Contains the core algorithmic trading engine that connects to MetaTrader 5.
 Entries require a minimum Momentum Score of **80.0** and must pass ALL of the following hard rules:
 
 1. **EMA 9 Angle & Trend Filter:** 
-   - **BUY:** EMA 9 angle must be sloping UP ($\ge +10^\circ$).
-   - **SELL:** EMA 9 angle must be sloping DOWN ($\le -10^\circ$).
+   - **BUY:** EMA 9 angle must be sloping UP (greater than or equal to +10 degrees).
+   - **SELL:** EMA 9 angle must be sloping DOWN (less than or equal to -10 degrees).
 2. **Structure & EMA 9 Position:**
    - **BUY:** Active candle must be GREEN. If price is *below* the EMA 9 (Pullback), the *previous* closed candle must also be GREEN.
    - **SELL:** Active candle must be RED. If price is *above* the EMA 9 (Pullback), the *previous* closed candle must also be RED.
