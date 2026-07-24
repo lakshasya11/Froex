@@ -478,7 +478,7 @@ export default function Home() {
         <div className="mt-6 md:mt-0 flex flex-col md:flex-row items-center gap-4">
           
           {/* DATE CONTROLS */}
-          <div className="flex flex-wrap items-center gap-1 bg-white shadow-sm p-1.5 rounded-xl border border-slate-200 backdrop-blur-xl">
+          <div className="flex items-center gap-1 bg-white shadow-sm p-1.5 rounded-xl border border-slate-200 backdrop-blur-xl overflow-x-auto max-w-full">
             {['today', 'yesterday', 'this-week', 'last-week', 'this-month', 'last-6-months', 'all'].map((f) => (
               <button
                 key={f}
@@ -486,7 +486,7 @@ export default function Home() {
                   setFilterType(f);
                   if (f !== 'custom') setCustomDate('');
                 }}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium capitalize transition-all duration-300 ${
+                className={`whitespace-nowrap shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-medium capitalize transition-all duration-300 ${
                   filterType === f 
                     ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.1)]'
                     : 'text-slate-900 hover:text-slate-900 hover:bg-slate-100/50 border border-transparent'
@@ -496,9 +496,9 @@ export default function Home() {
               </button>
             ))}
             
-            <div className="w-px h-6 bg-slate-800 mx-1"></div>
+            <div className="shrink-0 w-px h-6 bg-slate-800 mx-1"></div>
             
-            <div className="relative flex items-center group cursor-pointer" title="Select Custom Date">
+            <div className="relative flex shrink-0 items-center group cursor-pointer" title="Select Custom Date">
               <Calendar className={`absolute left-3 w-4 h-4 pointer-events-none transition-colors ${filterType === 'custom' ? 'text-emerald-600' : 'text-slate-900 group-hover:text-slate-900'}`} />
               <input 
                 type="date"
