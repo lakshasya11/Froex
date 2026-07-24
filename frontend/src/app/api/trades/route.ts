@@ -13,20 +13,8 @@ export async function GET(request: Request) {
     const dateQuery = searchParams.get('date');
 
     let targetDate = '';
-    
-    if (filter !== 'all') {
-      if (dateQuery && dateQuery.trim() !== '') {
-        targetDate = dateQuery;
-      } else if (filter === 'today') {
-        const today = new Date();
-        const offset = today.getTimezoneOffset() * 60000;
-        targetDate = new Date(today.getTime() - offset).toISOString().split('T')[0];
-      } else if (filter === 'yesterday') {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const offset = yesterday.getTimezoneOffset() * 60000;
-        targetDate = new Date(yesterday.getTime() - offset).toISOString().split('T')[0];
-      }
+    if (dateQuery && dateQuery.trim() !== '') {
+      targetDate = dateQuery;
     }
 
     const cwdPath = path.resolve(process.cwd(), '../backend');

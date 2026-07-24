@@ -17,17 +17,51 @@ def get_trades(filter_type, custom_date):
     params = []
 
     if filter_type != "all":
-        target_date = ""
-        if custom_date:
-            target_date = custom_date
+        if filter_type == "custom" and custom_date:
+            where_clause = "WHERE date(entry_time) = ?"
+            params.append(custom_date)
         elif filter_type == "today":
             target_date = datetime.now().strftime("%Y-%m-%d")
-        elif filter_type == "yesterday":
-            pass
-
-        if target_date:
             where_clause = "WHERE date(entry_time) = ?"
             params.append(target_date)
+        elif filter_type == "yesterday":
+            import datetime as dt
+            target_date = (dt.datetime.now() - dt.timedelta(days=1)).strftime("%Y-%m-%d")
+            where_clause = "WHERE date(entry_time) = ?"
+            params.append(target_date)
+        elif filter_type == "this-week":
+            import datetime as dt
+            today = dt.datetime.now()
+            start_of_week = (today - dt.timedelta(days=today.weekday())).strftime("%Y-%m-%d")
+            where_clause = "WHERE date(entry_time) >= ?"
+            params.append(start_of_week)
+        elif filter_type == "last-week":
+            import datetime as dt
+            today = dt.datetime.now()
+            start_of_last_week = (today - dt.timedelta(days=today.weekday() + 7)).strftime("%Y-%m-%d")
+            end_of_last_week = (today - dt.timedelta(days=today.weekday() + 1)).strftime("%Y-%m-%d")
+            where_clause = "WHERE date(entry_time) BETWEEN ? AND ?"
+            params.extend([start_of_last_week, end_of_last_week])
+        elif filter_type == "this-month":
+            import datetime as dt
+            today = dt.datetime.now()
+            start_of_month = today.replace(day=1).strftime("%Y-%m-%d")
+            where_clause = "WHERE date(entry_time) >= ?"
+            params.append(start_of_month)
+        elif filter_type == "last-6-months":
+            import datetime as dt
+            today = dt.datetime.now()
+            month = today.month - 6
+            year = today.year
+            if month <= 0:
+                month += 12
+                year -= 1
+            start_of_6_months = today.replace(year=year, month=month, day=1).strftime("%Y-%m-%d")
+            where_clause = "WHERE date(entry_time) >= ?"
+            params.append(start_of_6_months)
+        elif custom_date:
+            where_clause = "WHERE date(entry_time) = ?"
+            params.append(custom_date)
 
     trades_query = f"SELECT * FROM trades {where_clause} ORDER BY id DESC"
     cursor.execute(trades_query, params)

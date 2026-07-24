@@ -478,8 +478,8 @@ export default function Home() {
         <div className="mt-6 md:mt-0 flex flex-col md:flex-row items-center gap-4">
           
           {/* DATE CONTROLS */}
-          <div className="flex items-center gap-1 bg-white shadow-sm p-1.5 rounded-xl border border-slate-200 backdrop-blur-xl">
-            {['today', 'yesterday', 'all'].map((f) => (
+          <div className="flex flex-wrap items-center gap-1 bg-white shadow-sm p-1.5 rounded-xl border border-slate-200 backdrop-blur-xl">
+            {['today', 'yesterday', 'this-week', 'last-week', 'this-month', 'last-6-months', 'all'].map((f) => (
               <button
                 key={f}
                 onClick={() => {
@@ -492,7 +492,7 @@ export default function Home() {
                     : 'text-slate-900 hover:text-slate-900 hover:bg-slate-100/50 border border-transparent'
                 }`}
               >
-                {f === 'all' ? 'All Time' : f}
+                {f === 'all' ? 'All Time' : f.replace(/-/g, ' ')}
               </button>
             ))}
             
@@ -625,7 +625,7 @@ export default function Home() {
             <div className="absolute -right-6 -top-6 w-24 h-24 bg-orange-500/5 rounded-full blur-2xl group-hover:bg-orange-500/10 transition-colors"></div>
             <p className="text-slate-900 font-medium mb-1">Active Filter</p>
             <h2 className="text-4xl font-bold tracking-tight text-orange-500 capitalize">
-              {filterType === 'all' ? 'All Time' : filterType === 'yesterday' ? 'Yesterday' : filterType}
+              {filterType === 'all' ? 'All Time' : filterType.replace(/-/g, ' ')}
             </h2>
             <div className="mt-4 flex items-center gap-2 text-sm text-slate-500 font-medium">
               <span className="w-2 h-2 rounded-full bg-slate-400"></span>
