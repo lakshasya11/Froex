@@ -478,7 +478,7 @@ export default function Home() {
         <div className="mt-6 md:mt-0 flex flex-col md:flex-row items-center gap-4">
           
           {/* DATE CONTROLS */}
-          <div className="flex items-center gap-1 bg-white shadow-sm p-1.5 rounded-xl border border-slate-200 backdrop-blur-xl overflow-x-auto max-w-full">
+          <div className="flex items-center gap-1 bg-white shadow-sm p-1.5 rounded-xl border border-slate-200 backdrop-blur-xl">
             {['today', 'yesterday', 'this-week', 'last-week', 'this-month', 'last-6-months', 'all'].map((f) => (
               <button
                 key={f}
