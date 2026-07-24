@@ -589,14 +589,14 @@ export default function Home() {
         </div>
 
         {/* Profit Rate */}
-        <div className="bg-gradient-to-br from-white dark:from-slate-800 to-slate-50 dark:to-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl dark:shadow-none relative overflow-hidden group hover:border-blue-500/30 transition-colors duration-500">
-          <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-500/5 rounded-full blur-2xl group-hover:bg-blue-500/5 transition-colors"></div>
+        <div className={`bg-gradient-to-br from-white dark:from-slate-800 to-slate-50 dark:to-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl dark:shadow-none relative overflow-hidden group transition-colors duration-500 ${displayPnL >= 0 ? 'hover:border-emerald-500/30' : 'hover:border-rose-500/30'}`}>
+          <div className={`absolute -right-6 -top-6 w-24 h-24 rounded-full blur-2xl transition-colors ${displayPnL >= 0 ? 'bg-emerald-500/5 group-hover:bg-emerald-500/10' : 'bg-rose-500/5 group-hover:bg-rose-500/10'}`}></div>
           <p className="text-slate-900 dark:text-slate-100 font-medium mb-1">Profit Rate</p>
-          <h2 className="text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+          <h2 className={`text-4xl font-bold tracking-tight ${displayPnL >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
             {displayWinRate}%
           </h2>
-          <div className="mt-4 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-            <div className="bg-blue-50 dark:bg-slate-8000 h-full rounded-full" style={{ width: `${displayWinRate}%` }}></div>
+          <div className="mt-4 w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+            <div className={`h-full rounded-full ${displayPnL >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`} style={{ width: `${displayWinRate}%` }}></div>
           </div>
         </div>
 
