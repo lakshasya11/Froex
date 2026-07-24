@@ -29,7 +29,7 @@ def get_trades(filter_type, custom_date):
             where_clause = "WHERE date(entry_time) = ?"
             params.append(target_date)
 
-    trades_query = f"SELECT * FROM trades {where_clause} ORDER BY id DESC LIMIT 500"
+    trades_query = f"SELECT * FROM trades {where_clause} ORDER BY id DESC"
     cursor.execute(trades_query, params)
     trades = [dict(row) for row in cursor.fetchall()]
 

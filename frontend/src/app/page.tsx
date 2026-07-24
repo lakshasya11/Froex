@@ -52,8 +52,6 @@ interface ActiveTrade {
   profit_points: number;
   profit_dollars: number;
   volume: number;
-  bb_angle: number;
-  supertrend: string;
   is_higher: boolean;
   is_lower: boolean;
   sl: number;
@@ -148,7 +146,7 @@ export default function Home() {
   const [balance, setBalance] = useState<number | null>(null);
   const [news, setNews] = useState<NewsData | null>(null);
   const [activeTrades, setActiveTrades] = useState<ActiveTrade[]>([]);
-  const [marketState, setMarketState] = useState<{supertrend: string, bb_angle: number, timeframe?: string, timestamp?: number} | null>(null);
+  const [marketState, setMarketState] = useState<{trend_label: string, timeframe?: string, timestamp?: number} | null>(null);
   const [loading, setLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
   useEffect(() => {
@@ -584,9 +582,9 @@ export default function Home() {
         {filterType === 'today' ? (
           <div className={`bg-gradient-to-br from-white to-slate-50 p-6 rounded-2xl border shadow-2xl relative overflow-hidden group transition-colors duration-500 ${
             marketState 
-              ? (marketState.bb_angle > 5 && marketState.supertrend === 'BULL' 
+              ? (marketState.trend_label === 'UP' 
                   ? 'border-emerald-500/30 hover:border-emerald-500/60' 
-                  : marketState.bb_angle < -5 && marketState.supertrend === 'BEAR'
+                  : marketState.trend_label === 'DOWN'
                     ? 'border-rose-500/30 hover:border-rose-500/60'
                     : 'border-amber-500/30 hover:border-amber-500/60')
               : 'border-slate-200'
@@ -619,13 +617,7 @@ export default function Home() {
                 : 'WAITING'}
             </h2>
             <div className="mt-4 flex items-center gap-2 text-sm font-bold text-slate-500">
-              {marketState ? (
-                <span className={marketState.supertrend === 'BULL' ? 'text-emerald-600/70' : marketState.supertrend === 'BEAR' ? 'text-rose-600/70' : ''}>
-                  {marketState.supertrend} &bull; {marketState.bb_angle > 0 ? '+' : ''}{marketState.bb_angle.toFixed(1)}&deg;
-                </span>
-              ) : (
-                <span className="animate-pulse">Loading Live Data...</span>
-              )}
+              {!marketState && <span className="animate-pulse">Loading Live Data...</span>}
             </div>
           </div>
         ) : (
@@ -747,18 +739,6 @@ export default function Home() {
                 <div className="bg-white/60 p-3 rounded-xl border border-slate-200/50 flex flex-col items-center justify-center">
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Stop Loss</span>
                   <span className="text-lg font-bold text-rose-600">{activeTrade.sl !== undefined && activeTrade.sl > 0 ? activeTrade.sl.toFixed(2) : 'NONE'}</span>
-                </div>
-                <div className="bg-white/60 p-3 rounded-xl border border-slate-200/50 flex flex-col items-center justify-center">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">BB Angle</span>
-                  <span className={`text-lg font-bold ${activeTrade.bb_angle > 5 ? 'text-emerald-600' : activeTrade.bb_angle < -5 ? 'text-rose-600' : 'text-slate-900'}`}>
-                    {activeTrade.bb_angle > 0 ? '+' : ''}{activeTrade.bb_angle.toFixed(1)}&deg;
-                  </span>
-                </div>
-                <div className="bg-white/60 p-3 rounded-xl border border-slate-200/50 flex flex-col items-center justify-center">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">SuperTrend</span>
-                  <span className={`text-lg font-bold ${activeTrade.supertrend === 'BULL' ? 'text-emerald-600' : activeTrade.supertrend === 'BEAR' ? 'text-rose-600' : 'text-slate-900'}`}>
-                    {activeTrade.supertrend}
-                  </span>
                 </div>
               </div>
               

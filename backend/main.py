@@ -859,16 +859,7 @@ class TradingBot(EntryMixin, ExitMixin):
                     import json
                     import os
 
-                    _st_dir = analysis.get("st_direction", 0)
-                    st_str = "BULL" if _st_dir == 1 else ("BEAR" if _st_dir == -1 else "WAITING")
-
-                    bb_ang = analysis.get("bb_angle", 0.0)
-                    if bb_ang is None:
-                        bb_ang = 0.0
-
                     market_state = {
-                        "supertrend": st_str,
-                        "bb_angle": round(float(bb_ang), 2),
                         "trend_label": getattr(self, "last_trend", "NONE"),
                         "timeframe": self.timeframe,
                         "timestamp": int(time.time() * 1000),
@@ -899,8 +890,6 @@ class TradingBot(EntryMixin, ExitMixin):
                                     "profit_points": profit_pts,
                                     "profit_dollars": profit,
                                     "volume": p.volume,
-                                    "supertrend": st_str,
-                                    "bb_angle": round(float(bb_ang), 2),
                                     "trend_label": getattr(self, "last_trend", "NONE"),
                                     "timeframe": self.timeframe,
                                     "timestamp": int(time.time() * 1000),

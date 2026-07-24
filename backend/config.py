@@ -32,16 +32,13 @@ MAX_ENTRY_SLIPPAGE = 0.20  # Cancel the trade if slippage exceeds 0.20 points
 # =============================================================================
 # TECHNICAL ENTRY CRITERIA
 # =============================================================================
-BB_ANGLE_HARD_BLOCK = 4.0    # Lower angle threshold (M1 bands curve faster)
-BB_ANGLE_STRONG = 10.0
-BB_ANGLE_VERY_STRONG = 15.0
-BB_ANGLE_EXTREME = 20.0
+
 ENTRY_VEL_FRESH = 0.04       # Slightly lowered velocity threshold for M1 ticks
 ENTRY_AVG_FRESH = 0.02       # Slightly lowered average velocity threshold
 MIN_ENTRY_2S_VEL = 0.04  # Minimum 2-second velocity required for entry
-MIN_BODY_SIZE = 0.08         # Lower body size threshold for M1 candles
+MIN_BODY_SIZE = 0.10         # Lower body size threshold for M1 candles
 ENTRY_CONFIRM_TICKS = (
-    1      # 1 tick confirmation on M1 (2 ticks might be too slow)
+    2      # Tick confirmation
 )
 MAX_CONFIRMATION_DRIFT = (
     0.60  # Maximum allowed price drift during the confirmation window

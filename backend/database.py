@@ -103,8 +103,6 @@ class TradeDatabase:
                 ("duration_seconds", "INTEGER"),
                 ("adx_14", "REAL"),
                 ("sideways_score", "INTEGER"),
-                ("st_flips_5", "INTEGER"),
-                ("bb_bandwidth", "REAL"),
                 ("timeframe", "TEXT"),
             ]
             for col, dtype in new_cols:
@@ -129,7 +127,6 @@ class TradeDatabase:
                     decision_stage TEXT,
                     trade_executed INTEGER,
                     ticket INTEGER,
-                    bb_angle REAL,
                     instant_velocity REAL,
                     velocity_2s REAL,
                     strategy_version TEXT,
@@ -185,8 +182,8 @@ class TradeDatabase:
                                     INSERT INTO evaluated_setups (
                                         candle_time, direction, timestamp, score_momentum, score_trend, score_candle, 
                                         score_execution, score_total, reject_reason, decision_stage, trade_executed, 
-                                        ticket, bb_angle, instant_velocity, velocity_2s, strategy_version
-                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        ticket, instant_velocity, velocity_2s, strategy_version
+                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                     ON CONFLICT(candle_time, direction) DO UPDATE SET
                                         timestamp = excluded.timestamp,
                                         score_momentum = excluded.score_momentum,
@@ -198,7 +195,6 @@ class TradeDatabase:
                                         decision_stage = excluded.decision_stage,
                                         trade_executed = CASE WHEN excluded.trade_executed = 1 THEN 1 ELSE evaluated_setups.trade_executed END,
                                         ticket = CASE WHEN excluded.ticket IS NOT NULL THEN excluded.ticket ELSE evaluated_setups.ticket END,
-                                        bb_angle = excluded.bb_angle,
                                         instant_velocity = excluded.instant_velocity,
                                         velocity_2s = excluded.velocity_2s,
                                         strategy_version = excluded.strategy_version
@@ -217,7 +213,6 @@ class TradeDatabase:
                                         data.get("decision_stage", ""),
                                         data.get("trade_executed", 0),
                                         data.get("ticket"),
-                                        data.get("bb_angle", 0.0),
                                         data.get("instant_velocity", 0.0),
                                         data.get("velocity_2s", 0.0),
                                         data.get("strategy_version", "unknown"),
@@ -231,8 +226,8 @@ class TradeDatabase:
                                     sl, tp, entry_velocity, exit_reason, profit_points, profit_dollars, result, volume,
                                     score_momentum, score_trend, score_candle, score_execution, score_total,
                                     velocity_consistency, velocity_acceleration, score_acceleration, velocity_std, velocity_mean, mfe, mae, strategy_version, duration_seconds,
-                                    adx_14, sideways_score, st_flips_5, bb_bandwidth, timeframe
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    adx_14, sideways_score, timeframe
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                                     (
                                         ticket_val,
@@ -265,8 +260,6 @@ class TradeDatabase:
                                         data.get("duration_seconds", 0),
                                         data.get("adx_14", 0.0),
                                         data.get("sideways_score", 0),
-                                        data.get("st_flips_5", 0),
-                                        data.get("bb_bandwidth", 0.0),
                                         data.get("timeframe", "M5"),
                                     ),
                                 )

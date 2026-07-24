@@ -49,16 +49,17 @@ Contains the core algorithmic trading engine that connects to MetaTrader 5.
 
 Entries require a minimum Momentum Score of **80.0** and must pass ALL of the following hard rules:
 
-1. **Supertrend Alignment:** Must be BULLISH (1) for BUY, or BEARISH (-1) for SELL.
-2. **BB Midline Angle:** The absolute Bollinger Band midline angle must be $\ge 5$ degrees.
-3. **Structure & BB Position:**
-   - **BUY:** Current candle must be GREEN. If price is *below* the BB Midline, the *previous* candle must also be GREEN.
-   - **SELL:** Current candle must be RED. If price is *above* the BB Midline, the *previous* candle must also be RED.
-4. **Velocity Minimums:** Instant velocity $\ge 0.05$, Average velocity $\ge 0.03$, and 2-Second velocity $\ge 0.04$.
-5. **Body Size:** Minimum candle body must be $\ge 0.10$ points.
-6. **Tick Confirmation:** All conditions must hold true for **2 consecutive ticks** without the price drifting more than 0.60 points.
-7. **Candle Window:** Excludes the first 15 seconds and last 20 seconds of the 5-minute candle to avoid erratic volatility.
-8. **Re-entry Protection:** Price must move at least 0.50 points away from a previous losing entry price before trying again.
+1. **EMA 9 Angle & Trend Filter:** 
+   - **BUY:** EMA 9 angle must be sloping UP ($\ge +10^\circ$).
+   - **SELL:** EMA 9 angle must be sloping DOWN ($\le -10^\circ$).
+2. **Structure & EMA 9 Position:**
+   - **BUY:** Active candle must be GREEN. If price is *below* the EMA 9 (Pullback), the *previous* closed candle must also be GREEN.
+   - **SELL:** Active candle must be RED. If price is *above* the EMA 9 (Pullback), the *previous* closed candle must also be RED.
+3. **Velocity Minimums:** Instant velocity $\ge 0.04$, Average velocity $\ge 0.02$, and 2-Second velocity $\ge 0.04$.
+4. **Body Size:** Minimum candle body must be $\ge 0.10$ points.
+5. **Tick Confirmation:** All conditions must hold true for **2 consecutive ticks** without the price drifting more than 0.60 points.
+6. **Candle Window:** Excludes the first 15 seconds and last 20 seconds of the 5-minute candle to avoid erratic volatility.
+7. **Re-entry Protection:** Price must move at least 0.50 points away from a previous losing entry price before trying again.
 
 ---
 
@@ -78,13 +79,12 @@ Entries require a minimum Momentum Score of **80.0** and must pass ALL of the fo
 
 ---
 
-## Exit System (5-Tier Framework)
+## Exit System (4-Tier Framework)
 
 1. **Profit Lock (Breakeven System):** Ratchets the SL into profit. E.g., for M5, locks +0.50 pts of profit when the trade reaches +1.50 pts.
 2. **Hard SL Fallback:** Immediate closure if price hits the structural Hard Stop Loss (2.00 pts).
-3. **Trend Change Exit:** Instantly closes the trade if the Supertrend flips against your position.
-4. **Dynamic Take Profit:** Targets are set at entry based on velocity (Moderate, Strong, Ultra). Reaching the target instantly closes the trade.
-5. **Volatility Trailing Stop:** Activates at +1.80 pts of profit and trails at a gap of 0.80 pts behind the peak price.
+3. **Dynamic Take Profit:** Targets are set at entry based on velocity (Moderate, Strong, Ultra). Reaching the target instantly closes the trade.
+4. **Volatility Trailing Stop:** Activates at +1.80 pts of profit and trails at a gap of 0.80 pts behind the peak price.
 
 ---
 

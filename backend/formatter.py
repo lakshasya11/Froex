@@ -490,7 +490,6 @@ class TerminalFormatter:
         is_lower = analysis.get("is_lower", False)
         is_higher = analysis.get("is_higher", False)
 
-        st_dir = analysis.get("st_direction", 0)
         current_open = analysis.get("open", tick.bid)
         current_body = (
             tick.bid - current_open
@@ -504,10 +503,6 @@ class TerminalFormatter:
                     is_higher = True
                 elif tick.bid < current_open:
                     is_lower = True
-            elif st_dir == 1:
-                is_higher = True
-            elif st_dir == -1:
-                is_lower = True
 
         seq_status = (
             "HIGH" if is_higher else "LOW" if is_lower else f"MIX({bot.last_trend})"
@@ -523,9 +518,7 @@ class TerminalFormatter:
         velocity_2s_ready = analysis.get("velocity_2s_ready", False)
         current_open = analysis.get("open", tick.bid)
 
-        bb_ang = analysis.get("bb_angle", 0.0)
-        st_dir = analysis.get("st_direction", 0)
-        st_label = "BULL" if st_dir == 1 else ("BEAR" if st_dir == -1 else "FLAT")
+
 
         tf_secs = 300
         if bot.timeframe == "M1":
@@ -569,15 +562,12 @@ class TerminalFormatter:
                 _a_req = ENTRY_AVG_FRESH
                 _vel_ok = abs(vsm) >= _v_req
                 _avg_ok = avg_v_raw is not None and abs(avg_v_raw) >= _a_req
-                st_dir = analysis.get("st_direction", 0)
 
                 score = bot.strategy.calculate_momentum_score("BUY", tick, analysis, {})
                 block = score.block_reason
 
                 if not _vel_ok:
                     status = f"{Colors.CYAN}BUY  vel:{abs(vsm):.2f} < {_v_req}{Colors.RESET}"
-                elif st_dir != 1:
-                    status = f"{Colors.ORANGE}BUY  st_dir != BULL{Colors.RESET}"
                 elif not velocity_2s_ready:
                     status = f"{Colors.ORANGE}BUY  2s not ready{Colors.RESET}"
                 elif abs(velocity_2s) < MIN_ENTRY_2S_VEL:
@@ -594,15 +584,12 @@ class TerminalFormatter:
                 _a_req = ENTRY_AVG_FRESH
                 _vel_ok = abs(vsm) >= _v_req
                 _avg_ok = avg_v_raw is not None and abs(avg_v_raw) >= _a_req
-                st_dir = analysis.get("st_direction", 0)
 
                 score = bot.strategy.calculate_momentum_score("SELL", tick, analysis, {})
                 block = score.block_reason
 
                 if not _vel_ok:
                     status = f"{Colors.MAGENTA}SELL vel:{abs(vsm):.2f} < {_v_req}{Colors.RESET}"
-                elif st_dir != -1:
-                    status = f"{Colors.ORANGE}SELL st_dir != BEAR{Colors.RESET}"
                 elif not velocity_2s_ready:
                     status = f"{Colors.ORANGE}SELL 2s not ready{Colors.RESET}"
                 elif abs(velocity_2s) < MIN_ENTRY_2S_VEL:
@@ -618,11 +605,7 @@ class TerminalFormatter:
 
         avg_v_str = f"{avg_v_raw:+.2f}" if avg_v_raw is not None else " N/A"
         v_color = Colors.GREEN if vsm >= 0 else Colors.RED
-        st_color = (
-            Colors.GREEN
-            if st_dir == 1
-            else Colors.RED if st_dir == -1 else Colors.YELLOW
-        )
+
 
         arrow = "" if curr_candle == "GREEN" else "" if curr_candle == "RED" else "─"
 
@@ -651,7 +634,11 @@ class TerminalFormatter:
             else Colors.RED if bot.last_trend == "DOWN" else Colors.YELLOW
         )
         display_trend = "SIDE" if bot.last_trend == "NONE" else bot.last_trend
-        indicators_display = f"{DIM}TR:{T}{trend_color}{display_trend:<4}{T} {DIM}ST:{T}{st_color}{st_label:<4}{T} {DIM}BB:{T}{bb_ang:>+5.1f}°"
+        
+        ema_angle = analysis.get("ema_9_angle", 0.0) if analysis else 0.0
+        angle_color = Colors.GREEN if ema_angle >= 10 else Colors.RED if ema_angle <= -10 else Colors.YELLOW
+        
+        indicators_display = f"{DIM}TR:{T}{trend_color}{display_trend:<4}{T} {DIM}EMA∠:{T}{angle_color}{ema_angle:+.1f}°{T}"
 
         # Score display removed since momentum scoring is disabled
 

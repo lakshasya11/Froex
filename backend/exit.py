@@ -145,26 +145,7 @@ class ExitMixin:
                         pos_data["_closing"] = False
                     continue
 
-            # ── SYSTEM 2.5: TREND CHANGE EXIT ──
-            # Exit the trade if the SuperTrend indicator flips against our position.
-            st_dir = analysis.get("st_direction") if analysis else None
-            entry_time_ts = pos_data.get("entry_time_ts", time.time())
 
-            # Ensure trade has been active for at least 1 second to avoid tick-glitch exits
-            if st_dir is not None and (time.time() - entry_time_ts >= 1.0):
-                # Direct check: SuperTrend is actively pointing AGAINST our open trade direction
-                st_against_us = (direction == "BUY" and st_dir == -1) or (direction == "SELL" and st_dir == 1)
-                
-                if st_against_us:
-                    trend_label = "BEARISH" if st_dir == -1 else "BULLISH"
-                    self.log(
-                        f"⚠️ TREND CHANGE EXIT #{ticket} | ST turned {trend_label}", 
-                        self.Colors.ORANGE
-                    )
-                    pos_data["_closing"] = True
-                    if not self.close_position(pos, "Trend Change"):
-                        pos_data["_closing"] = False
-                    continue
 
             # ── SYSTEM 3: DYNAMIC TAKE PROFIT ──
             # The trade automatically closes when profit reaches tp_pts.

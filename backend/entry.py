@@ -145,21 +145,7 @@ class EntryMixin:
         live_count = len(positions) if positions else 0
         max_allowed = getattr(config, "MAX_SIMULTANEOUS_POSITIONS", 1)
 
-        _bb_ang = analysis.get("bb_angle", 0.0)
-
-        # Apply dynamic BB angle contradiction limits early to prevent log spam
-        if live_count >= 1:
-            if _bb_ang <= 0:
-                max_allowed_buy = 1
-            else:
-                max_allowed_buy = max_allowed
-
-            if _bb_ang >= 0:
-                max_allowed_sell = 1
-            else:
-                max_allowed_sell = max_allowed
-        else:
-            max_allowed_buy = max_allowed_sell = max_allowed
+        max_allowed_buy = max_allowed_sell = max_allowed
 
         if live_count >= max_allowed and max_allowed > 1:
             self.entry_block_reasons["MAX_POSITIONS"] += 1
@@ -206,7 +192,6 @@ class EntryMixin:
                         ),
                         "trade_executed": 0,
                         "ticket": None,
-                        "bb_angle": s_obj.bb_angle,
                         "instant_velocity": analysis.get("velocity", 0.0),
                         "velocity_2s": analysis.get("velocity_2s", 0.0),
                         "strategy_version": getattr(
@@ -336,13 +321,7 @@ class EntryMixin:
             live_positions = mt5.positions_get(symbol=self.symbol)
             live_count = len(live_positions) if live_positions else 0
 
-            _bb_ang = analysis.get("bb_angle", 0.0)
-
             max_allowed = getattr(config, "MAX_SIMULTANEOUS_POSITIONS", 1)
-            if signal == "BUY" and _bb_ang <= 0:
-                max_allowed = 1
-            elif signal == "SELL" and _bb_ang >= 0:
-                max_allowed = 1
 
             if live_count >= max_allowed:
                 self.log(
@@ -573,7 +552,6 @@ class EntryMixin:
                         "decision_stage": "EXECUTED",
                         "trade_executed": 1,
                         "ticket": result.order,
-                        "bb_angle": score.bb_angle,
                         "instant_velocity": analysis.get("velocity", 0.0),
                         "velocity_2s": analysis.get("velocity_2s", 0.0),
                         "strategy_version": getattr(
@@ -651,8 +629,6 @@ class EntryMixin:
                     "mae": 0.0,
                     "adx_14": analysis.get("adx_14", 0.0),
                     "sideways_score": score.sideways_score if score else 0,
-                    "st_flips_5": analysis.get("st_flips_5", 0),
-                    "bb_bandwidth": analysis.get("bb_bandwidth", 0.0),
                 }
                 self.position_data[actual_ticket] = unified_pos_data
                 return True

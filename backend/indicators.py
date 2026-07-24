@@ -135,88 +135,7 @@ class TechnicalIndicators:
         _tr.iloc[0] = _hv[0] - _lv[0]
         _atr_50_series = _tr.ewm(span=50, adjust=False).mean().values
 
-        # ── SUPERTREND (period=10, multiplier=0.9) ──
-        # 'Change ATR Calculation Method? = true' usually implies SMA instead of Wilder's RMA
-        _atr = _tr.rolling(window=10).mean().values
-        _atr = _np.nan_to_num(_atr, nan=0.0) # Handle initial NaNs
-        
-        # Fallback for initial values before rolling window is full
-        for i in range(10):
-            if _atr[i] == 0.0 and i > 0:
-                _atr[i] = _tr.iloc[:i+1].mean()
-                
-        _hl2 = (_hv + _lv) / 2.0
-        _UBb = _hl2 + 0.9 * _atr  # basic upper band
-        _LBb = _hl2 - 0.9 * _atr  # basic lower band
-        _UB = _UBb.copy()
-        _LB = _LBb.copy()
-        _STL = _np.empty(_n)  # SuperTrend line
-        _SDir = _np.ones(_n, dtype=int)  # 1=BULL, -1=BEAR
-        _STL[0] = _LBb[0]
 
-        for _i in range(1, _n):
-            _UB[_i] = (
-                _UBb[_i]
-                if (_UBb[_i] < _UB[_i - 1] or _cv[_i - 1] > _UB[_i - 1])
-                else _UB[_i - 1]
-            )
-            _LB[_i] = (
-                _LBb[_i]
-                if (_LBb[_i] > _LB[_i - 1] or _cv[_i - 1] < _LB[_i - 1])
-                else _LB[_i - 1]
-            )
-            if _SDir[_i - 1] == 1:  # was BULL
-                if _cv[_i] < _LB[_i]:
-                    _SDir[_i] = -1
-                    _STL[_i] = _UB[_i]
-                else:
-                    _SDir[_i] = 1
-                    _STL[_i] = _LB[_i]
-            else:  # was BEAR
-                if _cv[_i] > _UB[_i]:
-                    _SDir[_i] = 1
-                    _STL[_i] = _LB[_i]
-                else:
-                    _SDir[_i] = -1
-                    _STL[_i] = _UB[_i]
-
-        _st_dir_now = int(_SDir[-1])  # 1=BULL, -1=BEAR
-        _prev_st_dir = int(_SDir[-2]) if len(_SDir) > 1 else _st_dir_now
-        _st_value = float(_STL[-1])
-
-        _st_flips_5 = 0
-        if len(_SDir) >= 6:
-            for i in range(1, 6):
-                if _SDir[-i] != _SDir[-i-1]:
-                    _st_flips_5 += 1
-
-        # ── BOLLINGER BANDS (period=20, std=2.0) ──
-        # A volatility indicator. The middle band is a 20-period Simple Moving Average (SMA).
-        # Upper and lower bands are 2 standard deviations away. Useful for detecting sideways chop (flat angle).
-        _bb_mid_s = df_closed["close"].rolling(window=20).mean()
-        _bb_std_s = df_closed["close"].rolling(window=20).std()
-        _bb_mid_v = float(_bb_mid_s.iloc[-1])
-        _bb_sd = float(_bb_std_s.iloc[-1])
-        _bb_sd = _bb_sd if not math.isnan(_bb_sd) else 0.0
-        _bb_up = _bb_mid_v + 2.0 * _bb_sd
-        _bb_lo = _bb_mid_v - 2.0 * _bb_sd
-        _bb_bw = _bb_up - _bb_lo
-        
-        _bb_bw_s = (_bb_mid_s + 2.0 * _bb_std_s) - (_bb_mid_s - 2.0 * _bb_std_s)
-        _bb_bw_min_20 = float(_bb_bw_s.rolling(window=20).min().iloc[-1]) if len(_bb_bw_s) >= 20 else _bb_bw
-        
-        _bb_pos = float((current_price - _bb_lo) / _bb_bw) if _bb_bw > 0 else 0.5
-        # BB angle in degrees — using atan2 formula
-        _bb_arr = [x for x in _bb_mid_s.values[-7:] if not math.isnan(x)]
-        _bb_ang = 0.0
-        _prev_bb_ang = 0.0
-        if len(_bb_arr) >= 6:
-            _bb_ang = math.degrees(math.atan2(_bb_arr[-1] - _bb_arr[-6], 5))
-            _prev_bb_ang = math.degrees(math.atan2(_bb_arr[-2] - _bb_arr[-7], 5))
-        elif len(_bb_arr) >= 2:
-            lookback = len(_bb_arr) - 1
-            _bb_ang = math.degrees(math.atan2(_bb_arr[-1] - _bb_arr[0], lookback))
-            _prev_bb_ang = _bb_ang
 
         # ── ADX (Average Directional Index) ──
         adx_period = getattr(config, "ADX_PERIOD", 14)
@@ -250,6 +169,16 @@ class TechnicalIndicators:
             float(df_closed["low"].iloc[-2]) if len(df_closed) >= 2 else struct_curr_l
         )
 
+        # ── EMA 9 ──
+        ema_9_series = df_closed["close"].ewm(span=9, adjust=False).mean()
+        current_ema_9 = float(ema_9_series.iloc[-1]) if len(ema_9_series) > 0 else current_price
+        prev_ema_9 = float(ema_9_series.iloc[-2]) if len(ema_9_series) > 1 else current_ema_9
+        
+        # Calculate angle using inverse tangent over a 5 bar lookback window
+        lookback_bars = 5
+        ema_9_lookback = float(ema_9_series.iloc[-(lookback_bars + 1)]) if len(ema_9_series) > lookback_bars else current_ema_9
+        ema_9_angle = math.degrees(math.atan((current_ema_9 - ema_9_lookback) / lookback_bars))
+
         return {
             "close": current_price,
             "open": current_open,
@@ -272,24 +201,14 @@ class TechnicalIndicators:
             "current_body_size": current_body_size,
             "current_upper_wick": current_upper_wick,
             "current_lower_wick": current_lower_wick,
-            "st_direction": _st_dir_now,  # 1 = BULL, -1 = BEAR
-            "prev_st_direction": _prev_st_dir,
-            "st_value": _st_value,
             "atr_50": float(_atr_50_series[-1]),
-            # Bollinger Bands
-            "bb_mid": _bb_mid_v,
-            "bb_upper": _bb_up,
-            "bb_lower": _bb_lo,
-            "bb_bandwidth": _bb_bw,
-            "bb_position": _bb_pos,  # 0.0=lower band, 1.0=upper band
-            "bb_angle": _bb_ang,  # degrees: >+15=up-trend, <-15=down-trend
-            "prev_bb_angle": _prev_bb_ang,
             # Market Structure
             "struct_current_high": struct_curr_h,
             "struct_current_low": struct_curr_l,
             "struct_prev_high": struct_prev_h,
             "struct_prev_low": struct_prev_l,
-            "st_flips_5": _st_flips_5,
-            "bb_bandwidth_min_20": _bb_bw_min_20,
             "adx_14": current_adx,
+            "ema_9": current_ema_9,
+            "prev_ema_9": prev_ema_9,
+            "ema_9_angle": ema_9_angle,
         }
