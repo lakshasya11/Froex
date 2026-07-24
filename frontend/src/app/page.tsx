@@ -491,7 +491,7 @@ export default function Home() {
       <div className="absolute bottom-[-10%] right-[-5%] w-[40rem] h-[40rem] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none"></div>
       
       {/* HEADER */}
-      <header className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center mb-12 relative z-10">
+      <header className="max-w-7xl mx-auto flex flex-col xl:flex-row justify-between items-start xl:items-center mb-12 relative z-10">
         <div>
           <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-3">
             <div className="p-2 bg-emerald-500/5 rounded-xl border border-emerald-500/20">
@@ -502,7 +502,7 @@ export default function Home() {
           <p className="text-slate-900 dark:text-slate-100 text-lg">Live Algorithm Performance Dashboard</p>
         </div>
         
-        <div className="mt-6 md:mt-0 flex flex-col md:flex-row items-center gap-4">
+        <div className="mt-6 xl:mt-0 flex flex-wrap items-center gap-4 justify-start xl:justify-end">
           
           <button 
             onClick={toggleDarkMode}
@@ -564,7 +564,7 @@ export default function Home() {
               </div>
             </div>
 
-            <div className={`px-4 py-2 bg-white dark:bg-slate-800 shadow-sm dark:shadow-none rounded-full border flex items-center gap-2 h-[42px] transition-colors ${isOffline ? 'border-rose-200 bg-rose-50' : 'border-slate-200 dark:border-slate-700'}`}>
+            <div className={`px-4 py-2 bg-white dark:bg-slate-800 shadow-sm dark:shadow-none rounded-full border flex items-center gap-2 h-[42px] transition-colors ${isOffline ? 'border-rose-200 bg-rose-50 dark:bg-rose-900/20' : 'border-slate-200 dark:border-slate-700'}`}>
               <div className={`w-2.5 h-2.5 rounded-full ${isOffline ? 'bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]' : 'bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]'}`}></div>
               <span className={`text-sm font-medium ${isOffline ? 'text-rose-700' : 'text-slate-900 dark:text-slate-100'}`}>{isOffline ? 'Offline' : 'Live'}</span>
             </div>
@@ -596,7 +596,7 @@ export default function Home() {
             {displayWinRate}%
           </h2>
           <div className="mt-4 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-            <div className="bg-blue-500 h-full rounded-full" style={{ width: `${displayWinRate}%` }}></div>
+            <div className="bg-blue-50 dark:bg-slate-8000 h-full rounded-full" style={{ width: `${displayWinRate}%` }}></div>
           </div>
         </div>
 
@@ -780,8 +780,8 @@ export default function Home() {
               {/* Status Box */}
               <div className="flex flex-col gap-2 w-full md:w-auto md:min-w-[160px]">
                 <div className={`p-3 rounded-xl border flex items-center justify-center font-bold tracking-wide text-xs ${
-                  activeTrade.is_higher ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 
-                  activeTrade.is_lower ? 'bg-rose-50 border-rose-200 text-rose-700' : 
+                  activeTrade.is_higher ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 text-emerald-700' : 
+                  activeTrade.is_lower ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 text-rose-700' : 
                   'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
                 }`}>
                   {activeTrade.is_higher ? 'HIGHER' : activeTrade.is_lower ? 'LOWER' : 'INSIDE RANGE'}
@@ -800,7 +800,7 @@ export default function Home() {
       {/* P&L EQUITY CURVE */}
       {viewMode === 'trades' && filteredTrades.length > 0 && (
         <div className="max-w-7xl mx-auto mb-8 relative z-10 grid grid-cols-1 lg:grid-cols-[60%_40%] gap-6">
-          <div className="bg-blue-50 shadow-xl shadow-blue-100 rounded-2xl border border-blue-200 p-6">
+          <div className="bg-blue-50 dark:bg-slate-800 shadow-xl shadow-blue-100 dark:shadow-none rounded-2xl border border-blue-200 dark:border-slate-700 p-6">
             <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-blue-600" />
               Equity Curve (Net P&L)
@@ -835,8 +835,8 @@ export default function Home() {
                       <XAxis dataKey="time" stroke="#94a3b8" fontSize={12} tickMargin={10} minTickGap={30} tickFormatter={(val) => val ? val.substring(0, 5) : ''} />
                       <YAxis stroke="#94a3b8" fontSize={12} tickFormatter={(val) => `$${val}`} />
                       <RechartsTooltip 
-                        contentStyle={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
-                        itemStyle={{ color: '#0f172a', fontWeight: 'bold' }}
+                        contentStyle={{ backgroundColor: isDarkMode ? '#1e293b' : 'white', borderRadius: '12px', border: isDarkMode ? '1px solid #334155' : '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
+                        itemStyle={{ color: isDarkMode ? '#f1f5f9' : '#0f172a', fontWeight: 'bold' }}
                         labelStyle={{ color: '#64748b', marginBottom: '4px' }}
                         formatter={(value: any, name: any) => {
                           const labelText = name === 'pnl' ? 'Net P&L' : name === 'profit' ? 'Trade Profit' : name;
@@ -874,7 +874,7 @@ export default function Home() {
           </div>
           
           {/* SESSION BAR GRAPH */}
-          <div className="bg-blue-50 shadow-xl shadow-blue-100 rounded-2xl border border-blue-200 p-6">
+          <div className="bg-blue-50 dark:bg-slate-800 shadow-xl shadow-blue-100 dark:shadow-none rounded-2xl border border-blue-200 dark:border-slate-700 p-6">
             <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-blue-600" />
               Session Performance
@@ -913,7 +913,7 @@ export default function Home() {
                             <span>Loss: {data.Loss}</span>
                             <span>-${data.lossAmount.toFixed(2)}</span>
                           </p>
-                          <div className="pt-2 mt-2 border-t border-slate-100 flex justify-between gap-4 font-bold text-slate-600 dark:text-slate-400">
+                          <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-700 flex justify-between gap-4 font-bold text-slate-600 dark:text-slate-400">
                             <span>Profit Rate</span>
                             <span>{data.winRate}%</span>
                           </div>
@@ -991,7 +991,7 @@ export default function Home() {
               onClick={() => setDirFilter(dirFilter === 'BUY' ? 'ALL' : 'BUY')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${
                 dirFilter === 'BUY' 
-                  ? 'bg-blue-500/20 text-blue-600 border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.2)]'
+                  ? 'bg-blue-50 dark:bg-slate-8000/20 text-blue-600 border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.2)]'
                   : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'
               }`}
             >
@@ -1101,7 +1101,7 @@ export default function Home() {
                 <button
                   disabled={isTrading}
                   onClick={() => executeTrade('BUY')}
-                  className="px-6 py-2 bg-blue-500/5 hover:bg-blue-500/20 text-blue-600 border border-blue-500/30 rounded-lg font-bold shadow-[0_0_15px_rgba(59,130,246,0.15)] transition-all disabled:opacity-50"
+                  className="px-6 py-2 bg-blue-500/5 hover:bg-blue-50 dark:bg-slate-8000/20 text-blue-600 border border-blue-500/30 rounded-lg font-bold shadow-[0_0_15px_rgba(59,130,246,0.15)] transition-all disabled:opacity-50"
                 >
                   BUY
                 </button>
@@ -1133,10 +1133,10 @@ export default function Home() {
           <div className="space-y-6">
             <div className={`p-5 rounded-2xl border shadow-xl flex flex-col md:flex-row items-center justify-between gap-4 transition-colors duration-500 ${
               news.isBlocked 
-                ? 'bg-rose-50 border-rose-200' 
+                ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200' 
                 : !news.enabled 
                   ? 'bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 border-slate-200 dark:border-slate-700' 
-                  : 'bg-emerald-50 border-emerald-200'
+                  : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200'
             }`}>
               <div className="flex items-center gap-4">
                 <div className="flex-shrink-0 flex items-center justify-center w-12 h-12 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
@@ -1179,7 +1179,7 @@ export default function Home() {
                 onClick={() => setNewsFilter('upcoming')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${
                   newsFilter === 'upcoming' 
-                    ? 'bg-blue-500/20 text-blue-600 border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.2)]'
+                    ? 'bg-blue-50 dark:bg-slate-8000/20 text-blue-600 border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.2)]'
                     : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'
                 }`}
               >
@@ -1302,7 +1302,7 @@ export default function Home() {
                   }
 
                   return (
-                  <tr key={trade.id} className="hover:bg-slate-50 dark:bg-slate-900 transition-colors group">
+                  <tr key={trade.id} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group">
                     <td className="p-5 whitespace-nowrap">
                       <div className="flex flex-col gap-0.5">
                         <div className="flex items-center gap-1.5">
