@@ -33,6 +33,7 @@ MAX_ENTRY_SLIPPAGE = 0.20  # Cancel the trade if slippage exceeds 0.20 points
 # TECHNICAL ENTRY CRITERIA
 # =============================================================================
 
+EMA_ANGLE_THRESHOLD = 10.0   # Minimum EMA 9 angle required for trend strength
 ENTRY_VEL_FRESH = 0.04       # Slightly lowered velocity threshold for M1 ticks
 ENTRY_AVG_FRESH = 0.02       # Slightly lowered average velocity threshold
 MIN_ENTRY_2S_VEL = 0.04  # Minimum 2-second velocity required for entry

@@ -7,6 +7,7 @@ from config import (
     MIN_ENTRY_2S_VEL,
     MIN_BODY_SIZE,
     MAX_CONFIRMATION_DRIFT,
+    EMA_ANGLE_THRESHOLD,
 )
 from dataclasses import dataclass
 
@@ -136,7 +137,7 @@ class EnhancedTradingStrategy:
                 return score
 
             # 4. EMA 9 Angle Filter
-            if _ema_9_angle < 10.0:
+            if _ema_9_angle < EMA_ANGLE_THRESHOLD:
                 score.block_reason = "HARD_RULE_EMA9_ANGLE_WEAK"
                 return score
 
@@ -175,7 +176,7 @@ class EnhancedTradingStrategy:
                 return score
 
             # 4. EMA 9 Angle Filter
-            if _ema_9_angle > -10.0:
+            if _ema_9_angle > -EMA_ANGLE_THRESHOLD:
                 score.block_reason = "HARD_RULE_EMA9_ANGLE_WEAK"
                 return score
 
