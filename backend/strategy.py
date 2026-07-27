@@ -108,8 +108,15 @@ class EnhancedTradingStrategy:
         _prev_ema_9 = analysis.get("prev_ema_9")
         _ema_9_angle = analysis.get("ema_9_angle", 0.0)
 
+        _ema_21 = analysis.get("ema_21")
+        _prev_ema_21 = analysis.get("prev_ema_21")
+        _ema_21_angle = analysis.get("ema_21_angle", 0.0)
+
+        _atr_14 = analysis.get("atr_14", 0.0)
+        _current_high = analysis.get("current_high", tick.bid)
+        _current_low = analysis.get("current_low", tick.bid)
+
         vel_limit = getattr(config, "ENTRY_VEL_FRESH", 0.05)
-        avg_limit = getattr(config, "ENTRY_AVG_FRESH", 0.03)
         avg_limit = getattr(config, "ENTRY_AVG_FRESH", 0.03)
 
 
@@ -118,7 +125,50 @@ class EnhancedTradingStrategy:
         # =========================================================================
         if direction == "BUY":
 
-            # 1. Velocity Checks
+            # 1. Sideways & Choppiness Guards
+            if _atr_14 < getattr(config, "MIN_ATR_THRESHOLD", 1.20):
+                score.block_reason = "HARD_RULE_ATR_TOO_LOW"
+                return score
+            if _ema_9 is not None and _ema_21 is not None:
+                if abs(_ema_9 - _ema_21) < getattr(config, "MIN_EMA_GAP_PTS", 0.35):
+                    score.block_reason = "HARD_RULE_EMA_GAP_TOO_SMALL"
+                    return score
+                
+            # 2. EMA Trend Alignment & Angles
+            if _ema_9 is not None and _ema_21 is not None and _ema_9 <= _ema_21:
+                score.block_reason = "HARD_RULE_EMA9_BELOW_EMA21"
+                return score
+            if _ema_21_angle < getattr(config, "EMA21_ANGLE_THRESHOLD", 5.0):
+                score.block_reason = "HARD_RULE_EMA21_ANGLE_WEAK"
+                return score
+            if _ema_9_angle < getattr(config, "EMA_ANGLE_THRESHOLD", 10.0):
+                score.block_reason = "HARD_RULE_EMA9_ANGLE_WEAK"
+                return score
+
+            # 3. Candle & Price Structure
+            if _curr_color != "GREEN":
+                score.block_reason = "HARD_RULE_CURR_COLOR_MISMATCH"
+                return score
+            if _curr_body < 0.10:
+                score.block_reason = "HARD_RULE_MIN_BODY_SIZE"
+                return score
+            
+            # Pullback Protection
+            if _ema_9 is not None and _curr_price < _ema_9:
+                if _prev_color != "GREEN":
+                    score.block_reason = "HARD_RULE_EMA9_PULLBACK_PREV_RED"
+                    return score
+
+            # 4. Live Forming Candle & Tick Trajectory
+            if (_curr_price - _current_open) <= 0:
+                score.block_reason = "HARD_RULE_PRICE_BELOW_OPEN"
+                return score
+            
+            dist_to_high = _current_high - _curr_price
+            if dist_to_high > 0.05:
+                score.block_reason = "HARD_RULE_NOT_AT_HIGH"
+                return score
+
             if _instant_velocity < vel_limit:
                 score.block_reason = "HARD_RULE_VELOCITY"
                 return score
@@ -126,70 +176,61 @@ class EnhancedTradingStrategy:
                 score.block_reason = "HARD_RULE_AVG_VELOCITY"
                 return score
 
-            # 2. Current Candle Color Check
-            if _curr_color != "GREEN":
-                score.block_reason = "HARD_RULE_CURR_COLOR_MISMATCH"
-                return score
-
-            # 3. Minimum Body Size
-            if _curr_body < 0.10:
-                score.block_reason = "HARD_RULE_MIN_BODY_SIZE"
-                return score
-
-            # 4. EMA 9 Angle Filter
-            if abs(_ema_9_angle) < EMA_ANGLE_THRESHOLD:
-                score.block_reason = "HARD_RULE_EMA9_ANGLE_WEAK"
-                return score
-
-            # 5. EMA 9 Logic
-            if _ema_9 is not None:
-                if _curr_price > _ema_9:
-                    # Case 1: Direct Buy - Valid
-                    pass
-                elif _curr_price < _ema_9:
-                    # Case 2: Reversal / Pullback Buy
-                    if _prev_color != "GREEN":
-                        score.block_reason = "HARD_RULE_EMA9_PULLBACK_PREV_RED"
-                        return score
-
         # =========================================================================
         # 🔴 SELL ENTRY CONDITIONS
         # =========================================================================
         else:
 
-            # 1. Velocity Checks
+            # 1. Sideways & Choppiness Guards
+            if _atr_14 < getattr(config, "MIN_ATR_THRESHOLD", 1.20):
+                score.block_reason = "HARD_RULE_ATR_TOO_LOW"
+                return score
+            if _ema_9 is not None and _ema_21 is not None:
+                if abs(_ema_9 - _ema_21) < getattr(config, "MIN_EMA_GAP_PTS", 0.35):
+                    score.block_reason = "HARD_RULE_EMA_GAP_TOO_SMALL"
+                    return score
+                
+            # 2. EMA Trend Alignment & Angles
+            if _ema_9 is not None and _ema_21 is not None and _ema_9 >= _ema_21:
+                score.block_reason = "HARD_RULE_EMA9_ABOVE_EMA21"
+                return score
+            if _ema_21_angle > -getattr(config, "EMA21_ANGLE_THRESHOLD", 5.0):
+                score.block_reason = "HARD_RULE_EMA21_ANGLE_WEAK"
+                return score
+            if _ema_9_angle > -getattr(config, "EMA_ANGLE_THRESHOLD", 10.0):
+                score.block_reason = "HARD_RULE_EMA9_ANGLE_WEAK"
+                return score
+
+            # 3. Candle & Price Structure
+            if _curr_color != "RED":
+                score.block_reason = "HARD_RULE_CURR_COLOR_MISMATCH"
+                return score
+            if _curr_body < 0.10:
+                score.block_reason = "HARD_RULE_MIN_BODY_SIZE"
+                return score
+            
+            # Pullback Protection
+            if _ema_9 is not None and _curr_price > _ema_9:
+                if _prev_color != "RED":
+                    score.block_reason = "HARD_RULE_EMA9_PULLBACK_PREV_GREEN"
+                    return score
+
+            # 4. Live Forming Candle & Tick Trajectory
+            if (_curr_price - _current_open) >= 0:
+                score.block_reason = "HARD_RULE_PRICE_ABOVE_OPEN"
+                return score
+            
+            dist_to_low = _curr_price - _current_low
+            if dist_to_low > 0.05:
+                score.block_reason = "HARD_RULE_NOT_AT_LOW"
+                return score
+
             if _instant_velocity > -vel_limit:
                 score.block_reason = "HARD_RULE_VELOCITY"
                 return score
             if _avg_velocity > -avg_limit:
                 score.block_reason = "HARD_RULE_AVG_VELOCITY"
                 return score
-
-            # 2. Current Candle Color Check
-            if _curr_color != "RED":
-                score.block_reason = "HARD_RULE_CURR_COLOR_MISMATCH"
-                return score
-
-            # 3. Minimum Body Size
-            if _curr_body < 0.10:
-                score.block_reason = "HARD_RULE_MIN_BODY_SIZE"
-                return score
-
-            # 4. EMA 9 Angle Filter
-            if abs(_ema_9_angle) < EMA_ANGLE_THRESHOLD:
-                score.block_reason = "HARD_RULE_EMA9_ANGLE_WEAK"
-                return score
-
-            # 5. EMA 9 Logic
-            if _ema_9 is not None:
-                if _curr_price < _ema_9:
-                    # Case 1: Direct Sell - Valid
-                    pass
-                elif _curr_price > _ema_9:
-                    # Case 2: Reversal / Pullback Sell
-                    if _prev_color != "RED":
-                        score.block_reason = "HARD_RULE_EMA9_PULLBACK_PREV_GREEN"
-                        return score
 
         # All rules validated successfully!
         return score

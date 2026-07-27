@@ -45,21 +45,25 @@ Contains the core algorithmic trading engine that connects to MetaTrader 5.
 
 ---
 
-## Entry Conditions (Multi-Factor Scoring)
+## Entry Conditions (EMA 9 & 21 Execution Flow)
 
-Entries require a minimum Momentum Score of **80.0** and must pass ALL of the following hard rules:
+Entries must pass ALL of the following hard rules:
 
-1. **EMA 9 Angle & Trend Filter:** 
-   - **BUY:** EMA 9 angle must be sloping UP (greater than or equal to +10 degrees).
-   - **SELL:** EMA 9 angle must be sloping DOWN (less than or equal to -10 degrees).
-2. **Structure & EMA 9 Position:**
-   - **BUY:** Active candle must be GREEN. If price is *below* the EMA 9 (Pullback), the *previous* closed candle must also be GREEN.
-   - **SELL:** Active candle must be RED. If price is *above* the EMA 9 (Pullback), the *previous* closed candle must also be RED.
-3. **Velocity Minimums:** Instant velocity $\ge 0.04$, Average velocity $\ge 0.02$, and 2-Second velocity $\ge 0.04$.
-4. **Body Size:** Minimum candle body must be $\ge 0.10$ points.
-5. **Tick Confirmation:** All conditions must hold true for **2 consecutive ticks** without the price drifting more than 0.60 points.
-6. **Candle Window:** Excludes the first 15 seconds and last 20 seconds of the 5-minute candle to avoid erratic volatility.
-7. **Re-entry Protection:** Price must move at least 0.50 points away from a previous losing entry price before trying again.
+1. **Global Guards (Sideways & Choppiness):**
+   - **Volatility:** `ATR(14)` must be $\ge 1.20$.
+   - **EMA Expansion:** The gap between EMA 9 and EMA 21 must be $\ge 0.35$ points (EMAs must be fanning out).
+2. **Trend Alignment (EMA Hierarchy & Angle):** 
+   - **BUY:** EMA 9 must be strictly ABOVE EMA 21. EMA 9 angle $\ge +10.0^\circ$ and EMA 21 angle $\ge +5.0^\circ$.
+   - **SELL:** EMA 9 must be strictly BELOW EMA 21. EMA 9 angle $\le -10.0^\circ$ and EMA 21 angle $\le -5.0^\circ$.
+3. **Structure & Pullback Logic:**
+   - **BUY:** Active candle must be GREEN. If price pulls back *below* the EMA 9, the *previous* closed candle must also be GREEN.
+   - **SELL:** Active candle must be RED. If price pulls back *above* the EMA 9, the *previous* closed candle must also be RED.
+4. **Live Forming Candle & Tick Trajectory:**
+   - **Price Delta:** Current price must be actively expanding away from the candle open (e.g. Current Price - Open > 0 for BUY).
+   - **Tick Push:** Ticks must be actively pushing near the extremes of the forming candle (dist_to_high $\le 0.05$ for BUY, dist_to_low $\le 0.05$ for SELL).
+5. **Velocity Minimums:** Instant velocity $\ge 0.04$ (BUY) or $\le -0.04$ (SELL), Average velocity $\ge 0.02$ (BUY) or $\le -0.02$ (SELL).
+6. **Body Size:** Minimum active candle body must be $\ge 0.10$ points.
+7. **Tick Confirmation:** All conditions must hold true continuously for **2 consecutive ticks** before firing.
 
 ---
 

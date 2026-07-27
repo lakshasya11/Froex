@@ -34,6 +34,9 @@ MAX_ENTRY_SLIPPAGE = 0.20  # Cancel the trade if slippage exceeds 0.20 points
 # =============================================================================
 
 EMA_ANGLE_THRESHOLD = 10.0   # Minimum EMA 9 angle required for trend strength
+EMA21_ANGLE_THRESHOLD = 5.0  # Minimum EMA 21 angle required for baseline trend
+MIN_EMA_GAP_PTS = 0.35       # Minimum point gap between EMA 9 and EMA 21
+MIN_ATR_THRESHOLD = 1.20     # Minimum ATR(14) required to confirm volatility
 ENTRY_VEL_FRESH = 0.04       # Slightly lowered velocity threshold for M1 ticks
 ENTRY_AVG_FRESH = 0.02       # Slightly lowered average velocity threshold
 MIN_ENTRY_2S_VEL = 0.04  # Minimum 2-second velocity required for entry

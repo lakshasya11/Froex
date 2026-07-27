@@ -635,10 +635,13 @@ class TerminalFormatter:
         )
         display_trend = "SIDE" if bot.last_trend == "NONE" else bot.last_trend
         
-        ema_angle = analysis.get("ema_9_angle", 0.0) if analysis else 0.0
-        angle_color = Colors.GREEN if ema_angle >= 10 else Colors.RED if ema_angle <= -10 else Colors.YELLOW
+        ema_9_angle = analysis.get("ema_9_angle", 0.0) if analysis else 0.0
+        ema_21_angle = analysis.get("ema_21_angle", 0.0) if analysis else 0.0
         
-        indicators_display = f"{DIM}TR:{T}{trend_color}{display_trend:<4}{T} {DIM}EMA∠:{T}{angle_color}{ema_angle:+.1f}°{T}"
+        angle_9_color = Colors.GREEN if ema_9_angle >= 10 else Colors.RED if ema_9_angle <= -10 else Colors.YELLOW
+        angle_21_color = Colors.GREEN if ema_21_angle >= 5 else Colors.RED if ema_21_angle <= -5 else Colors.YELLOW
+        
+        indicators_display = f"{DIM}TR:{T}{trend_color}{display_trend:<4}{T} {DIM}EMA9∠:{T}{angle_9_color}{ema_9_angle:+.1f}°{T} {DIM}EMA21∠:{T}{angle_21_color}{ema_21_angle:+.1f}°{T}"
 
         # Score display removed since momentum scoring is disabled
 

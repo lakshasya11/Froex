@@ -134,6 +134,7 @@ class TechnicalIndicators:
         # Seed the first value of TR to be High - Low to avoid NA issues
         _tr.iloc[0] = _hv[0] - _lv[0]
         _atr_50_series = _tr.ewm(span=50, adjust=False).mean().values
+        _atr_14_series = _tr.ewm(span=14, adjust=False).mean().values
 
 
 
@@ -179,6 +180,14 @@ class TechnicalIndicators:
         ema_9_lookback = float(ema_9_series.iloc[-(lookback_bars + 1)]) if len(ema_9_series) > lookback_bars else current_ema_9
         ema_9_angle = math.degrees(math.atan((current_ema_9 - ema_9_lookback) / lookback_bars))
 
+        # ── EMA 21 ──
+        ema_21_series = df_closed["close"].ewm(span=21, adjust=False).mean()
+        current_ema_21 = float(ema_21_series.iloc[-1]) if len(ema_21_series) > 0 else current_price
+        prev_ema_21 = float(ema_21_series.iloc[-2]) if len(ema_21_series) > 1 else current_ema_21
+        
+        ema_21_lookback = float(ema_21_series.iloc[-(lookback_bars + 1)]) if len(ema_21_series) > lookback_bars else current_ema_21
+        ema_21_angle = math.degrees(math.atan((current_ema_21 - ema_21_lookback) / lookback_bars))
+
         return {
             "close": current_price,
             "open": current_open,
@@ -201,7 +210,10 @@ class TechnicalIndicators:
             "current_body_size": current_body_size,
             "current_upper_wick": current_upper_wick,
             "current_lower_wick": current_lower_wick,
+            "current_high": current_high,
+            "current_low": current_low,
             "atr_50": float(_atr_50_series[-1]),
+            "atr_14": float(_atr_14_series[-1]),
             # Market Structure
             "struct_current_high": struct_curr_h,
             "struct_current_low": struct_curr_l,
@@ -211,4 +223,7 @@ class TechnicalIndicators:
             "ema_9": current_ema_9,
             "prev_ema_9": prev_ema_9,
             "ema_9_angle": ema_9_angle,
+            "ema_21": current_ema_21,
+            "prev_ema_21": prev_ema_21,
+            "ema_21_angle": ema_21_angle,
         }
