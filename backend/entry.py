@@ -123,12 +123,14 @@ class EntryMixin:
         }
         tf_secs = tf_map.get(tf, 300)
 
-        if tf == "M1":
-            start_window = 5
+        # Standardized start window for all timeframes
+        start_window = 5
+        
+        # End window: last 5 sec for M1, last 10 sec for everything else
+        if tf == "M1" or tf == "1M":
             end_window = tf_secs - 5
         else:
-            start_window = 15
-            end_window = tf_secs - 20
+            end_window = tf_secs - 10
 
         if seconds_into_candle < start_window:
             self.entry_block_reasons["CANDLE_ENTRY_START"] = (
@@ -136,7 +138,8 @@ class EntryMixin:
             )
             return "NONE", "NONE", None
 
-        if seconds_into_candle > end_window:
+        # Block if we are at or past the end window boundary
+        if seconds_into_candle >= end_window:
             self.entry_block_reasons["CANDLE_ENTRY_END"] = (
                 self.entry_block_reasons.get("CANDLE_ENTRY_END", 0) + 1
             )
@@ -457,9 +460,9 @@ class EntryMixin:
             # Winprofx XAUUSD: stops_level=50, point=0.01 → min dist = 0.50 pts
             min_dist = round(
                 (symbol_info.trade_stops_level * symbol_info.point)
-                + (symbol_info.point * 15),
+                + (symbol_info.point * 2),
                 symbol_info.digits,
-            )  # +15 pts buffer on top of minimum to avoid edge rejections
+            )  # +2 pts buffer on top of minimum to avoid edge rejections
             if signal == "BUY":
                 sl_limit = round(entry_price - min_dist, symbol_info.digits)
                 tp_limit = round(entry_price + min_dist, symbol_info.digits)

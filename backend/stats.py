@@ -98,12 +98,7 @@ def main():
     if stats:
         TerminalFormatter().print_database_stats(stats, is_today=today)
         if show_today_trades or date_filter:
-            limit = (
-                today_count
-                if today_count
-                else stats.get("total_trades", LAST_TODAY_COUNT)
-            )
-            print_recent_trades(db, stats.get("date_filter"), limit)
+            pass # Removed trade history list per user request
     else:
         print("Failed to query statistics.")
 

@@ -8,7 +8,7 @@ class ExitMixin:
     """
     Mixin class that provides the exit logic and position management for the trading bot.
     It continuously monitors open positions and applies dynamic stop losses, trailing stops,
-    profit locks, and take profit targets to manage risk and maximize gains.
+    profit locks, take profit targets, and technical crossover exits to manage risk.
     """
 
     def check_exit_conditions(self, tick, analysis, positions):
@@ -21,8 +21,12 @@ class ExitMixin:
             analysis: A dictionary containing pre-calculated technical indicators.
             positions: A list of currently open positions retrieved from MetaTrader 5.
         """
-        if not positions:
+        if not positions or not analysis:
             return
+
+        # Extract live EMAs for crossover exit check
+        ema_9 = analysis.get("ema_9")
+        ema_21 = analysis.get("ema_21")
 
         for pos in positions:
             ticket = pos.ticket
@@ -70,10 +74,28 @@ class ExitMixin:
                         pos_data["_closing"] = False
                 continue
 
-            # ── SYSTEM 1: PROFIT LOCKS (Breakeven System) ──
-            # Iterates through PROFIT_LOCK_STEPS (defined in config.py).
-            # If the current profit exceeds a trigger point, the Stop Loss is moved
-            # into profit to lock in guaranteed gains and prevent a winning trade from turning into a loss.
+            # ── SYSTEM 1: EMA CROSSOVER EXIT ──
+            # Closes the trade if the short-term EMA 9 crosses back over EMA 21 against the trade direction.
+            if ema_9 is not None and ema_21 is not None:
+                ema_cross_exit = False
+                if direction == "BUY" and ema_9 < ema_21:
+                    ema_cross_exit = True
+                    reason_msg = "EMA Cross Exit (EMA 9 < EMA 21)"
+                elif direction == "SELL" and ema_9 > ema_21:
+                    ema_cross_exit = True
+                    reason_msg = "EMA Cross Exit (EMA 9 > EMA 21)"
+
+                if ema_cross_exit:
+                    self.log(
+                        f"🚨 {reason_msg} #{ticket} | Closing {direction} position",
+                        self.Colors.ORANGE,
+                    )
+                    pos_data["_closing"] = True
+                    if not self.close_position(pos, "EMA Cross Exit"):
+                        pos_data["_closing"] = False
+                    continue
+
+            # ── SYSTEM 2: PROFIT LOCKS (Breakeven System) ──
             locked_sl_price = None
 
             tf_settings = getattr(config, "TIMEFRAME_SETTINGS", {}).get(
@@ -109,8 +131,6 @@ class ExitMixin:
                             f"PROFIT LOCK ENGAGED #{ticket} | Lock SL: {lock_price_rounded:.2f}",
                             self.Colors.CYAN,
                         )
-                        # Push lock SL to broker so MT5 also respects the lock
-                        # (prevents broker from closing at a worse price via trailing SL)
                         self._modify_sl(pos, lock_price_rounded)
 
             price_lock_sl = pos_data.get("price_lock_sl_price")
@@ -128,9 +148,7 @@ class ExitMixin:
                         pos_data["_closing"] = False
                     continue
 
-            # ── SYSTEM 2: HARD STOP LOSS FALLBACK ──
-            # The absolute worst-case scenario exit. If the price hits the hard_sl_price
-            # (which is set at entry based on HARD_STOP_LOSS config), the trade is immediately closed.
+            # ── SYSTEM 3: HARD STOP LOSS FALLBACK ──
             hard_sl_sw = pos_data.get("hard_sl_price") or pos_data.get("initial_sl")
             if hard_sl_sw is not None and hard_sl_sw != 0.0:
                 if (direction == "BUY" and tick.bid <= hard_sl_sw) or (
@@ -145,11 +163,7 @@ class ExitMixin:
                         pos_data["_closing"] = False
                     continue
 
-
-
-            # ── SYSTEM 3: DYNAMIC TAKE PROFIT ──
-            # The trade automatically closes when profit reaches tp_pts.
-            # This target is dynamically chosen at entry (Moderate, Strong, or Ultra) based on how fast the entry velocity was.
+            # ── SYSTEM 4: DYNAMIC TAKE PROFIT ──
             if current_profit >= tp_pts:
                 self.log(f"TP #{ticket} (+{current_profit:.2f}pts)", self.Colors.GREEN)
                 pos_data["_closing"] = True
@@ -157,8 +171,7 @@ class ExitMixin:
                     pos_data["_closing"] = False
                 continue
 
-            # ── SYSTEM 4: VOLATILITY TRAILING STOP ──
-            # Fixed trail trigger and gap based on config.py (no dynamic scaling)
+            # ── SYSTEM 5: VOLATILITY TRAILING STOP ──
             _tp_target = pos_data.get("initial_tp_pts", cfg_trail_trigger)
             _trail_trigger = cfg_trail_trigger
             _trail_gap = cfg_trail_gap
@@ -199,7 +212,6 @@ class ExitMixin:
             trail_sl = pos_data.get("trail_sl_price")
 
             if trail_sl is not None:
-                # ── Broker SL Sync (Decoupled to allow retries) ──
                 last_modify = pos_data.get("last_sl_modify_time", 0.0)
                 now_t = time.time()
                 if (now_t - last_modify) >= TRAIL_MODIFY_MIN_INTERVAL:
@@ -207,7 +219,6 @@ class ExitMixin:
                         round(trail_sl / tick_size) * tick_size, digits
                     )
 
-                    # Fetch LIVE position SL (not stale snapshot) for accurate comparison
                     _live_pos_list = mt5.positions_get(ticket=pos.ticket)
                     _live_sl = (
                         float(_live_pos_list[0].sl)
@@ -240,7 +251,6 @@ class ExitMixin:
                                 )
                                 pos_data["last_sent_broker_sl"] = actual_sl
 
-                # ── Software Exit Execution (Instant) ──
                 if (direction == "BUY" and tick.bid <= trail_sl) or (
                     direction == "SELL" and tick.ask >= trail_sl
                 ):

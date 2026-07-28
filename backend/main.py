@@ -6,6 +6,7 @@ if sys.platform == "win32":
 import MetaTrader5 as mt5
 import time
 import os
+import json
 from datetime import datetime, timezone
 import collections
 from strategy import EnhancedTradingStrategy
@@ -116,7 +117,7 @@ class TradingBot(EntryMixin, ExitMixin):
         self.is_executing = False
         self.last_trade_history = None
         self.price_history = collections.deque(maxlen=25)
-        self.velocity_buffer = collections.deque(maxlen=5)
+        self.velocity_buffer = collections.deque(maxlen=10)  # ~3s of samples at 0.3s/tick
 
         self.pre_entry_ticks = collections.deque(maxlen=50)  # ~1s of ticks before entry
         self.last_trend = "NONE"
@@ -243,11 +244,17 @@ class TradingBot(EntryMixin, ExitMixin):
 
         self.velocity_buffer.append(smooth_velocity)
         if len(self.velocity_buffer) >= 3:
-            analysis["avg_velocity"] = sum(self.velocity_buffer) / len(
-                self.velocity_buffer
-            )
-            # Velocity Consistency: Avg change between consecutive samples
+            # Exponential Weighted Moving Average (EWMA) — recent ticks count more.
+            # alpha=0.4 means the most recent tick contributes ~40% of the average,
+            # preventing slow ticks from masking strong momentum spikes.
             v_list = list(self.velocity_buffer)
+            alpha = 0.4
+            ewma = v_list[0]
+            for v in v_list[1:]:
+                ewma = alpha * v + (1 - alpha) * ewma
+            analysis["avg_velocity"] = ewma
+
+            # Velocity Consistency: Avg change between consecutive samples
             changes = [abs(v_list[i] - v_list[i - 1]) for i in range(1, len(v_list))]
             analysis["velocity_avg_change"] = (
                 sum(changes) / len(changes) if changes else 0.0
@@ -402,7 +409,20 @@ class TradingBot(EntryMixin, ExitMixin):
                 elif analysis.get("is_lower"):
                     self.last_trend = "DOWN"
                 else:
-                    self.last_trend = "NONE"
+                    # Fallback: if price is inside the previous body (consolidating),
+                    # use EMA 9 vs EMA 21 alignment to keep the trend label alive.
+                    # This prevents a single pullback candle from triggering SIDEWAY_TREND.
+                    _ema9 = analysis.get("ema_9")
+                    _ema21 = analysis.get("ema_21")
+                    if _ema9 is not None and _ema21 is not None:
+                        if _ema9 > _ema21:
+                            self.last_trend = "UP"
+                        elif _ema9 < _ema21:
+                            self.last_trend = "DOWN"
+                        else:
+                            self.last_trend = "NONE"
+                    else:
+                        self.last_trend = "NONE"
 
                 self.loop_count += 1
 
@@ -459,7 +479,14 @@ class TradingBot(EntryMixin, ExitMixin):
                                 no_trade_reason = "No Valid Setup"
                                 
                         if candle_range > 0:
-                            self.formatter.print_candle_movement(self.timeframe, candle_range, prev_body, prev_o, prev_h, prev_l, prev_c, no_trade_reason)
+                            _today = self.db.get_stats(date_filter="today") or {}
+                            self.formatter.print_candle_movement(
+                                self.timeframe, candle_range, prev_body,
+                                prev_o, prev_h, prev_l, prev_c, no_trade_reason,
+                                win_rate=_today.get("win_rate", 0.0),
+                                net_pnl=_today.get("total_profit", 0.0),
+                                total_trades=_today.get("total_trades", 0),
+                            )
                             
                     self.entry_block_reasons.clear()
 
@@ -758,41 +785,9 @@ class TradingBot(EntryMixin, ExitMixin):
                         price_moved_ok = tick.bid <= self.last_entry_price + 0.10
 
                 # --- POST-EXIT / PREV TRADE PRICE GUARDS ---
+                # REMOVED: Sequential price guards forced the bot to buy at worse prices after a stop-out.
+                # We now rely purely on MAX_LOSSES_PER_CANDLE and time/candle momentum rules.
                 re_entry_ok = True
-                
-                curr_candle_color = analysis.get("candle_color", "UNKNOWN")
-                if not getattr(self, "candle_open_color", None) and curr_candle_color in ("GREEN", "RED"):
-                    self.candle_open_color = curr_candle_color
-
-                candle_reversed = (
-                    self.candle_open_color == "RED" and curr_candle_color == "GREEN"
-                    or self.candle_open_color == "GREEN" and curr_candle_color == "RED"
-                )
-
-                if not candle_reversed and self.last_entry_price is not None:
-                    # RULE 1: IF LAST EXIT WAS A LOSS -> ENTRY MUST BE BETTER THAN PREVIOUS ENTRY
-                    if self.last_exit_result == "LOSS":
-                        if self.last_entry_dir == "BUY" and tick.bid <= self.last_entry_price:
-                            re_entry_ok = False # BUY must be ABOVE prev entry
-                        elif self.last_entry_dir == "SELL" and tick.bid >= self.last_entry_price:
-                            re_entry_ok = False # SELL must be BELOW prev entry
-
-                    # RULE 2: IF LAST EXIT WAS A WIN -> ENTRY MUST BE BETTER THAN PREVIOUS EXIT
-                    elif self.last_exit_result == "WIN" and self.last_exit_price is not None:
-                        if self.last_entry_dir == "BUY" and tick.bid <= self.last_exit_price:
-                            re_entry_ok = False # BUY must be ABOVE prev exit
-                        elif self.last_entry_dir == "SELL" and tick.bid >= self.last_exit_price:
-                            re_entry_ok = False # SELL must be BELOW prev exit
-                elif candle_reversed:
-                    if self.last_exit_result in ("WIN", "LOSS") and not getattr(self, "_reversal_override_logged", False):
-                        self.log(
-                            f"CANDLE REVERSAL OVERRIDE — {self.candle_open_color}→{curr_candle_color} bypass sequencer block",
-                            self.Colors.CYAN,
-                        )
-                        self._reversal_override_logged = True
-
-                if not re_entry_ok:
-                    self.entry_block_reasons["SEQUENCE_PRICE_GUARD"] += 1
 
                 if (
                     len(current_positions) < self.max_simultaneous
@@ -861,18 +856,53 @@ class TradingBot(EntryMixin, ExitMixin):
                                     self.last_entry_dir = entry_signal
 
                 try:
-                    import json
-                    import os
+
+                    def safe_replace(src, dst):
+                        for _ in range(10):
+                            try:
+                                os.replace(src, dst)
+                                return
+                            except PermissionError:
+                                time.sleep(0.01)
+                        os.replace(src, dst)
+
+                    # Compute current block reason for the frontend
+                    _live_buy_score = self.strategy.calculate_momentum_score("BUY", tick, analysis, {})
+                    _live_sell_score = self.strategy.calculate_momentum_score("SELL", tick, analysis, {})
+                    _live_block = _live_buy_score.block_reason or _live_sell_score.block_reason or ""
+
+                    # Top candle-level block reason (from entry guards like SIDEWAY_TREND, DAILY_LIMIT etc.)
+                    _top_guard_reason = ""
+                    if self.entry_block_reasons:
+                        _top_guard_reason = self.entry_block_reasons.most_common(1)[0][0]
 
                     market_state = {
                         "trend_label": getattr(self, "last_trend", "NONE"),
                         "timeframe": self.timeframe,
                         "timestamp": int(time.time() * 1000),
+                        "current_price": tick.bid if tick else 0,
+                        "spread": round((tick.ask - tick.bid) * 100, 1) if tick else 0,
+                        # Live entry analysis for frontend status panel
+                        "block_reason": _top_guard_reason or _live_block,
+                        "ema_9": round(analysis.get("ema_9") or 0, 2) if analysis else 0,
+                        "ema_21": round(analysis.get("ema_21") or 0, 2) if analysis else 0,
+                        "ema_9_angle": round(analysis.get("ema_9_angle") or 0, 1) if analysis else 0,
+                        "ema_21_angle": round(analysis.get("ema_21_angle") or 0, 1) if analysis else 0,
+                        "atr_14": round(analysis.get("atr_14") or 0, 2) if analysis else 0,
+                        "velocity": round(analysis.get("velocity") or 0, 3) if analysis else 0,
+                        "avg_velocity": round(analysis.get("avg_velocity") or 0, 3) if analysis else 0,
+                        "candle_color": analysis.get("candle_color", "UNKNOWN") if analysis else "UNKNOWN",
+                        "buy_score": round(analysis.get("buy_score_total") or 0, 1) if analysis else 0,
+                        "sell_score": round(analysis.get("sell_score_total") or 0, 1) if analysis else 0,
+                        "seconds_into_candle": int(tick.time) - int(analysis.get("time", tick.time)) if analysis and analysis.get("time") else 0,
                     }
 
                     base_dir = os.path.dirname(os.path.abspath(__file__))
-                    with open(os.path.join(base_dir, "market_state.json"), "w") as f:
+                    temp_market = os.path.join(base_dir, "market_state_tmp.json")
+                    target_market = os.path.join(base_dir, "market_state.json")
+                    with open(temp_market, "w") as f:
                         json.dump(market_state, f)
+                    safe_replace(temp_market, target_market)
 
                     active_trades_list = []
                     if current_positions:
@@ -900,12 +930,15 @@ class TradingBot(EntryMixin, ExitMixin):
                                     "timestamp": int(time.time() * 1000),
                                     "sl": p.sl,
                                     "tp": p.tp,
-                                    "open_time": p.time,
+                                    "open_time": int(time.time()) - max(0, int(mt5.symbol_info_tick(self.symbol).time) - int(p.time)) if mt5.symbol_info_tick(self.symbol) else int(time.time()),
                                     "spread": 0,
                                 }
                             )
-                    with open(os.path.join(base_dir, "active_trade.json"), "w") as f:
+                    temp_trade = os.path.join(base_dir, "active_trade_tmp.json")
+                    target_trade = os.path.join(base_dir, "active_trade.json")
+                    with open(temp_trade, "w") as f:
                         json.dump(active_trades_list, f)
+                    safe_replace(temp_trade, target_trade)
                 except Exception as ex:
                     print(f"Error writing live state: {ex}")
 

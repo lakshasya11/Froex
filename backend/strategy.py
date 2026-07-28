@@ -138,10 +138,10 @@ class EnhancedTradingStrategy:
             if _ema_9 is not None and _ema_21 is not None and _ema_9 <= _ema_21:
                 score.block_reason = "HARD_RULE_EMA9_BELOW_EMA21"
                 return score
-            if _ema_21_angle < getattr(config, "EMA21_ANGLE_THRESHOLD", 5.0):
+            if abs(_ema_21_angle) < getattr(config, "EMA21_ANGLE_THRESHOLD", 5.0):
                 score.block_reason = "HARD_RULE_EMA21_ANGLE_WEAK"
                 return score
-            if _ema_9_angle < getattr(config, "EMA_ANGLE_THRESHOLD", 10.0):
+            if abs(_ema_9_angle) < getattr(config, "EMA_ANGLE_THRESHOLD", 10.0):
                 score.block_reason = "HARD_RULE_EMA9_ANGLE_WEAK"
                 return score
 
@@ -165,7 +165,7 @@ class EnhancedTradingStrategy:
                 return score
             
             dist_to_high = _current_high - _curr_price
-            if dist_to_high > 0.05:
+            if dist_to_high > 0.15:
                 score.block_reason = "HARD_RULE_NOT_AT_HIGH"
                 return score
 
@@ -194,10 +194,10 @@ class EnhancedTradingStrategy:
             if _ema_9 is not None and _ema_21 is not None and _ema_9 >= _ema_21:
                 score.block_reason = "HARD_RULE_EMA9_ABOVE_EMA21"
                 return score
-            if _ema_21_angle > -getattr(config, "EMA21_ANGLE_THRESHOLD", 5.0):
+            if abs(_ema_21_angle) < getattr(config, "EMA21_ANGLE_THRESHOLD", 5.0):
                 score.block_reason = "HARD_RULE_EMA21_ANGLE_WEAK"
                 return score
-            if _ema_9_angle > -getattr(config, "EMA_ANGLE_THRESHOLD", 10.0):
+            if abs(_ema_9_angle) < getattr(config, "EMA_ANGLE_THRESHOLD", 10.0):
                 score.block_reason = "HARD_RULE_EMA9_ANGLE_WEAK"
                 return score
 
@@ -208,7 +208,7 @@ class EnhancedTradingStrategy:
             if _curr_body < 0.10:
                 score.block_reason = "HARD_RULE_MIN_BODY_SIZE"
                 return score
-            
+
             # Pullback Protection
             if _ema_9 is not None and _curr_price > _ema_9:
                 if _prev_color != "RED":
@@ -219,9 +219,9 @@ class EnhancedTradingStrategy:
             if (_curr_price - _current_open) >= 0:
                 score.block_reason = "HARD_RULE_PRICE_ABOVE_OPEN"
                 return score
-            
+
             dist_to_low = _curr_price - _current_low
-            if dist_to_low > 0.05:
+            if dist_to_low > 0.15:
                 score.block_reason = "HARD_RULE_NOT_AT_LOW"
                 return score
 

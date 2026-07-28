@@ -18,7 +18,9 @@ import {
   AlertCircle,
   Copy,
   Moon,
-  Sun
+  Sun,
+  User,
+  ArrowRight
 } from 'lucide-react';
 
 interface Trade {
@@ -148,7 +150,7 @@ export default function Home() {
   const [balance, setBalance] = useState<number | null>(null);
   const [news, setNews] = useState<NewsData | null>(null);
   const [activeTrades, setActiveTrades] = useState<ActiveTrade[]>([]);
-  const [marketState, setMarketState] = useState<{trend_label: string, timeframe?: string, timestamp?: number} | null>(null);
+  const [marketState, setMarketState] = useState<{trend_label: string, timeframe?: string, timestamp?: number, spread?: number, current_price?: number} | null>(null);
   const [loading, setLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
   useEffect(() => {
@@ -186,7 +188,7 @@ export default function Home() {
       setIsDarkMode(true);
     }
   };
-  const [viewMode, setViewMode] = useState<'trades' | 'news' | 'manual'>('trades');
+  const [viewMode, setViewMode] = useState<'trades' | 'news' | 'manual' | 'history'>('trades');
   const [newsFilter, setNewsFilter] = useState<'upcoming' | 'past'>('upcoming');
   
   // Trade type filters
@@ -198,6 +200,7 @@ export default function Home() {
   const [tradeCount, setTradeCount] = useState('1');
   const [slPoints, setSlPoints] = useState('10.00');
   const [tpPoints, setTpPoints] = useState('3.00');
+  const [manualTimeframe, setManualTimeframe] = useState('M5');
   const [isTrading, setIsTrading] = useState(false);
   
   // Apply frontend filters (MUST BE BEFORE EARLY RETURN)
@@ -225,6 +228,21 @@ export default function Home() {
       });
     }
     return result;
+  }, [filteredTrades]);
+
+  const currentStreak = React.useMemo(() => {
+    if (!filteredTrades || filteredTrades.length === 0) return { type: 'NONE', count: 0 };
+    // Sort by most recent first
+    const sorted = [...filteredTrades].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    let type = sorted[0].profit_dollars > 0 ? 'WIN' : 'LOSS';
+    let count = 0;
+    for (const trade of sorted) {
+      const isWin = trade.profit_dollars > 0;
+      if (type === 'WIN' && isWin) count++;
+      else if (type === 'LOSS' && !isWin) count++;
+      else break;
+    }
+    return { type, count };
   }, [filteredTrades]);
 
   const sessionData = React.useMemo(() => {
@@ -297,7 +315,7 @@ export default function Home() {
 
   const executeTrade = async (direction: string) => {
     // First/Last 15 seconds safety check
-    const timeframe = marketState?.timeframe || 'M5';
+    const timeframe = manualTimeframe;
     let tfMinutes = 5;
     if (timeframe.startsWith('M')) tfMinutes = parseInt(timeframe.substring(1)) || 5;
     else if (timeframe.startsWith('H')) tfMinutes = (parseInt(timeframe.substring(1)) || 1) * 60;
@@ -326,7 +344,8 @@ export default function Home() {
           count: parseFloat(tradeCount),
           lotSize: parseFloat(lotSize),
           sl: parseFloat(slPoints),
-          tp: parseFloat(tpPoints)
+          tp: parseFloat(tpPoints),
+          timeframe: manualTimeframe
         })
       });
       
@@ -379,7 +398,8 @@ export default function Home() {
         url.searchParams.set('date', customDate);
       }
       
-      const res = await fetch(url.toString());
+      url.searchParams.set('t', Date.now().toString());
+      const res = await fetch(url.toString(), { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
       if (data.success) {
@@ -418,7 +438,7 @@ export default function Home() {
   useEffect(() => {
     const fetchActiveTrade = async () => {
       try {
-        const res = await fetch('/api/active');
+        const res = await fetch('/api/active?t=' + Date.now(), { cache: 'no-store' });
         if (!res.ok) return;
         const data = await res.json();
         if (data.success) {
@@ -490,316 +510,339 @@ export default function Home() {
       <div className="absolute top-[-10%] left-[-5%] w-[40rem] h-[40rem] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none"></div>
       <div className="absolute bottom-[-10%] right-[-5%] w-[40rem] h-[40rem] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none"></div>
       
-      {/* HEADER */}
-      <header className="max-w-7xl mx-auto flex flex-col xl:flex-row justify-between items-start xl:items-center mb-12 relative z-10">
-        <div>
-          <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-3">
-            <div className="p-2 bg-emerald-500/5 rounded-xl border border-emerald-500/20">
-              <Activity className="text-emerald-600 w-8 h-8" />
-            </div>
-            Trading Terminal
-          </h1>
-          <p className="text-slate-900 dark:text-slate-100 text-lg">Live Algorithm Performance Dashboard</p>
-        </div>
+      <div className="max-w-[1600px] mx-auto w-full grid grid-cols-1 lg:grid-cols-[30%_1fr] gap-6 relative z-10">
         
-        <div className="mt-6 xl:mt-0 flex flex-wrap items-center gap-4 justify-start xl:justify-end">
-          
-          <button 
-            onClick={toggleDarkMode}
-            className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors"
-            title="Toggle Dark Mode"
-          >
-            {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-          </button>
+        {/* LEFT SIDEBAR */}
+        <div className="flex flex-col gap-4">
+          <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-700">
+             <div className="flex justify-between items-center mb-4">
+               <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100">Live Status</h2>
+               <button onClick={toggleDarkMode} className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+                 {isDarkMode ? <Sun className="w-4 h-4 text-slate-400" /> : <Moon className="w-4 h-4 text-slate-500" />}
+               </button>
+             </div>
 
-          {/* DATE CONTROLS */}
-          <div className="flex items-center gap-1 bg-white dark:bg-slate-800 shadow-sm dark:shadow-none p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 backdrop-blur-xl">
-            {['today', 'yesterday', 'this-week', 'last-week', 'this-month', 'last-6-months', 'all'].map((f) => (
-              <button
-                key={f}
-                onClick={() => {
-                  setFilterType(f);
-                  if (f !== 'custom') setCustomDate('');
-                }}
-                className={`whitespace-nowrap shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-medium capitalize transition-all duration-300 ${
-                  filterType === f 
-                    ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.1)]'
-                    : 'text-slate-900 dark:text-slate-100 hover:text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:bg-slate-800/50 border border-transparent'
-                }`}
-              >
-                {f === 'all' ? 'All Time' : f.replace(/-/g, ' ')}
-              </button>
-            ))}
-            
-            <div className="shrink-0 w-px h-6 bg-slate-800 mx-1"></div>
-            
-            <div className="relative flex shrink-0 items-center group cursor-pointer" title="Select Custom Date">
-              <Calendar className={`absolute left-3 w-4 h-4 pointer-events-none transition-colors ${filterType === 'custom' ? 'text-emerald-600' : 'text-slate-900 dark:text-slate-100 group-hover:text-slate-900 dark:text-slate-100'}`} />
-              <input 
-                type="date"
-                value={customDate}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    setCustomDate(e.target.value);
-                    setFilterType('custom');
-                  }
-                }}
-                className={`pl-9 pr-3 py-1.5 bg-transparent text-sm rounded-lg outline-none cursor-pointer transition-all duration-300 w-[140px] ${
-                  filterType === 'custom'
-                    ? 'text-emerald-600 bg-emerald-500/5 border border-emerald-500/30'
-                    : 'text-transparent border border-transparent hover:bg-slate-100 dark:bg-slate-800/50'
-                } [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:left-0`}
-              />
-              {filterType !== 'custom' && (
-                <span className="absolute left-9 pointer-events-none text-sm font-medium text-slate-900 dark:text-slate-100 group-hover:text-slate-900 dark:text-slate-100 transition-colors">Custom</span>
-              )}
-            </div>
-          </div>
 
-          <div className="flex items-center gap-3">
-            <div className={`px-3 py-2 bg-white dark:bg-slate-800 shadow-sm dark:shadow-none rounded-full border flex items-center gap-2 h-[42px] transition-colors border-slate-200 dark:border-slate-700`}>
-              <div className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-wider flex items-center gap-1">
-                <span>{marketState?.timeframe || 'M5'} Candle:</span>
-                <span className="text-slate-900 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[11px]"><CandleTimer timeframe={marketState?.timeframe || 'M5'} /></span>
+             {/* Trading Account Login */}
+             <div className="bg-[#3B82F6] rounded-xl p-4 text-white shadow-lg shadow-blue-500/20 mb-4">
+               <div className="text-[10px] font-bold uppercase tracking-wider mb-1 opacity-90">ACCOUNT / LOGIN</div>
+               <div className="font-black text-xl tracking-tight uppercase">{process.env.NEXT_PUBLIC_MT5_LOGIN || '30217238'}</div>
+             </div>
+
+             {/* Symbol Price & Spread */}
+             <div className="bg-[#1E40AF] rounded-xl p-4 text-white shadow-lg shadow-blue-500/20 mb-4 flex justify-between items-end">
+               <div>
+                 <div className="text-[10px] font-bold uppercase tracking-wider mb-1 opacity-90">XAUUSD</div>
+                 <div className="font-black text-3xl tracking-tight leading-none">
+                   {activeTrades.length > 0 
+                      ? activeTrades[0].current_price.toFixed(2) 
+                      : (marketState?.current_price ? marketState.current_price.toFixed(2) : (marketState?.timestamp ? 'WAITING' : 'LOADING'))}
+                 </div>
+               </div>
+               {marketState?.spread !== undefined && (
+                 <div className="flex flex-col items-end">
+                   <div className="text-[9px] font-bold uppercase tracking-wider mb-1 opacity-70">SPREAD (PTS)</div>
+                   <div className="font-black text-lg text-emerald-400 leading-none">{marketState.spread}</div>
+                 </div>
+               )}
+             </div>
+
+             {/* DETAILED STATS ROW - SIDEBAR VERSION */}
+             <div className="grid grid-cols-2 gap-3 w-full mb-4">
+               {/* Total Trades */}
+               <div className="relative p-3 rounded-xl bg-gradient-to-br from-indigo-500/5 to-blue-500/5 border border-indigo-500/20 backdrop-blur-xl shadow-sm overflow-hidden group">
+                 <div className="absolute -bottom-2 -right-2 p-2 opacity-5"><Activity className="w-16 h-16" /></div>
+                 <div className="flex items-center gap-2 mb-2 relative z-10">
+                   <div className="p-1.5 bg-indigo-500/10 rounded-md text-indigo-600 dark:text-indigo-400"><Activity className="w-3.5 h-3.5" /></div>
+                   <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Total Trades</span>
+                 </div>
+                 <div className="text-xl font-black text-slate-900 dark:text-slate-100 relative z-10">{displayTotal}</div>
+               </div>
+               
+               {/* Win Rate */}
+               <div className="relative p-3 rounded-xl bg-gradient-to-br from-emerald-500/5 to-teal-500/5 border border-emerald-500/20 backdrop-blur-xl shadow-sm overflow-hidden group">
+                 <div className="absolute -bottom-2 -right-2 p-2 opacity-5"><Target className="w-16 h-16" /></div>
+                 <div className="flex items-center gap-2 mb-2 relative z-10">
+                   <div className="p-1.5 bg-emerald-500/10 rounded-md text-emerald-600 dark:text-emerald-400"><Target className="w-3.5 h-3.5" /></div>
+                   <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Win Rate</span>
+                 </div>
+                 <div className="text-xl font-black text-emerald-600 relative z-10">
+                   {displayWinRate}%
+                 </div>
+               </div>
+               
+               {/* Net P&L */}
+               <div className="relative p-3 rounded-xl bg-gradient-to-br from-blue-500/5 to-cyan-500/5 border border-blue-500/20 backdrop-blur-xl shadow-sm overflow-hidden group">
+                 <div className="absolute -bottom-2 -right-2 p-2 opacity-5"><DollarSign className="w-16 h-16" /></div>
+                 <div className="flex items-center gap-2 mb-2 relative z-10">
+                   <div className="p-1.5 bg-blue-500/10 rounded-md text-blue-600 dark:text-blue-400"><DollarSign className="w-3.5 h-3.5" /></div>
+                   <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Net P&L</span>
+                 </div>
+                 <div className={`text-xl font-black relative z-10 ${displayPnL >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                   {displayPnL >= 0 ? '+' : ''}${displayPnL.toFixed(2)}
+                 </div>
+               </div>
+               
+               {/* Win / Loss */}
+               <div className="relative p-3 rounded-xl bg-gradient-to-br from-purple-500/5 to-pink-500/5 border border-purple-500/20 backdrop-blur-xl shadow-sm overflow-hidden group">
+                 <div className="absolute -bottom-2 -right-2 p-2 opacity-5"><TrendingUp className="w-16 h-16" /></div>
+                 <div className="flex items-center gap-2 mb-2 relative z-10">
+                   <div className="p-1.5 bg-purple-500/10 rounded-md text-purple-600 dark:text-purple-400"><TrendingUp className="w-3.5 h-3.5" /></div>
+                   <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Win / Loss</span>
+                 </div>
+                 <div className="text-xl font-black text-slate-900 dark:text-slate-100 relative z-10 flex items-baseline gap-1.5">
+                   <span className="text-emerald-600">{displayWins}</span>
+                   <span className="text-sm text-slate-300 dark:text-slate-600">/</span>
+                   <span className="text-red-500">{displayLosses}</span>
+                 </div>
+               </div>
+             </div>
+
+             {/* Trend */}
+             <div className="flex justify-between items-center pb-4 mb-4 border-b border-slate-100 dark:border-slate-700">
+               <span className="font-bold text-sm text-slate-700 dark:text-slate-300">Trend:</span>
+               <span className={`font-black uppercase flex items-center gap-1 text-sm ${marketState?.trend_label === 'UP' ? 'text-emerald-500' : marketState?.trend_label === 'DOWN' ? 'text-rose-500' : 'text-slate-500'}`}>
+                 {marketState?.trend_label === 'UP' ? <TrendingUp className="w-4 h-4" /> : marketState?.trend_label === 'DOWN' ? <TrendingDown className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
+                 {marketState?.trend_label === 'UP' ? 'UPTREND' : marketState?.trend_label === 'DOWN' ? 'DOWNTREND' : 'SIDEWAY'}
+               </span>
+             </div>
+
+             {/* Streak */}
+             <div className="flex justify-between items-center pb-4 mb-4 border-b border-slate-100 dark:border-slate-700">
+               <span className="font-bold text-sm text-slate-700 dark:text-slate-300">Streak:</span>
+               <span className={`font-black uppercase flex items-center gap-1 text-sm ${currentStreak.type === 'WIN' ? 'text-emerald-500' : currentStreak.type === 'LOSS' ? 'text-rose-500' : 'text-slate-500'}`}>
+                 {currentStreak.type === 'WIN' ? `🔥 ${currentStreak.count} WINS` : currentStreak.type === 'LOSS' ? `❄️ ${currentStreak.count} LOSSES` : 'NONE'}
+               </span>
+             </div>
+
+             {/* Candle Timer */}
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-slate-700 dark:text-slate-300 text-sm flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4 text-slate-400" />
+                  Option Expiry
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded">{marketState?.timeframe || 'M5'}</span>
+                  <span className="font-black text-sm text-slate-900 dark:text-slate-100">
+                    <CandleTimer timeframe={marketState?.timeframe || 'M5'} />
+                  </span>
+                </div>
               </div>
-            </div>
-
-            <div className={`px-4 py-2 bg-white dark:bg-slate-800 shadow-sm dark:shadow-none rounded-full border flex items-center gap-2 h-[42px] transition-colors ${isOffline ? 'border-rose-200 bg-rose-50 dark:bg-rose-900/20' : 'border-slate-200 dark:border-slate-700'}`}>
-              <div className={`w-2.5 h-2.5 rounded-full ${isOffline ? 'bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]' : 'bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]'}`}></div>
-              <span className={`text-sm font-medium ${isOffline ? 'text-rose-700' : 'text-slate-900 dark:text-slate-100'}`}>{isOffline ? 'Offline' : 'Live'}</span>
-            </div>
           </div>
 
-        </div>
-      </header>
+          {/* LIVE ENTRY STATUS / BLOCK REASON PANEL */}
+          {activeTrades.length === 0 && (() => {
+            const blockRaw: string = (marketState as any)?.block_reason || '';
+            const ema9Angle: number = (marketState as any)?.ema_9_angle ?? 0;
+            const ema21Angle: number = (marketState as any)?.ema_21_angle ?? 0;
+            const atr14: number = (marketState as any)?.atr_14 ?? 0;
+            const velocity: number = (marketState as any)?.velocity ?? 0;
+            const avgVelocity: number = (marketState as any)?.avg_velocity ?? 0;
+            const candleColor: string = (marketState as any)?.candle_color || 'UNKNOWN';
+            const buyScore: number = (marketState as any)?.buy_score ?? 0;
+            const sellScore: number = (marketState as any)?.sell_score ?? 0;
+            const secIntoCandle: number = (marketState as any)?.seconds_into_candle ?? 0;
 
-      {/* STATS CARDS */}
-      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12 relative z-10">
-        
-        {/* Net P&L */}
-        <div className="bg-gradient-to-br from-white dark:from-slate-800 to-slate-50 dark:to-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl dark:shadow-none relative overflow-hidden group hover:border-emerald-500/30 transition-colors duration-500">
-          <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl group-hover:bg-emerald-500/5 transition-colors"></div>
-          <p className="text-slate-900 dark:text-slate-100 font-medium mb-1">Net P&L</p>
-          <h2 className={`text-4xl font-bold tracking-tight ${displayPnL >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-            ${displayPnL.toFixed(2)}
-          </h2>
-          <div className="mt-4 flex items-center gap-2 text-sm text-slate-900 dark:text-slate-100">
-            <DollarSign className="w-4 h-4" /> Filtered Profit
-          </div>
-        </div>
+            // Human-readable mapping for block reasons
+            const blockLabels: Record<string, { label: string; icon: string; color: string }> = {
+              'SIDEWAY_TREND':             { label: 'Trend is Sideways',         icon: '↔️', color: 'text-yellow-500' },
+              'HARD_RULE_ATR_TOO_LOW':     { label: 'ATR Too Low (Low Volatility)', icon: '📉', color: 'text-yellow-500' },
+              'HARD_RULE_EMA_GAP_TOO_SMALL': { label: 'EMA 9/21 Gap Too Small',  icon: '📏', color: 'text-orange-400' },
+              'HARD_RULE_EMA9_BELOW_EMA21':  { label: 'EMA 9 Below EMA 21',      icon: '🔻', color: 'text-rose-500' },
+              'HARD_RULE_EMA9_ABOVE_EMA21':  { label: 'EMA 9 Above EMA 21',      icon: '🔺', color: 'text-rose-500' },
+              'HARD_RULE_EMA21_ANGLE_WEAK':  { label: 'EMA 21 Angle Too Flat',   icon: '📐', color: 'text-orange-400' },
+              'HARD_RULE_EMA9_ANGLE_WEAK':   { label: 'EMA 9 Angle Too Flat',    icon: '📐', color: 'text-orange-400' },
+              'HARD_RULE_CURR_COLOR_MISMATCH': { label: 'Candle Color Mismatch', icon: '🕯️', color: 'text-yellow-500' },
+              'HARD_RULE_MIN_BODY_SIZE':    { label: 'Candle Body Too Small',     icon: '🕯️', color: 'text-yellow-500' },
+              'HARD_RULE_VELOCITY':         { label: 'Velocity Too Slow',          icon: '⚡', color: 'text-orange-400' },
+              'HARD_RULE_AVG_VELOCITY':     { label: 'Avg Velocity Too Slow',      icon: '⚡', color: 'text-orange-400' },
+              'HARD_RULE_NOT_AT_HIGH':      { label: 'Price Not at Candle High',   icon: '🎯', color: 'text-yellow-500' },
+              'HARD_RULE_NOT_AT_LOW':       { label: 'Price Not at Candle Low',    icon: '🎯', color: 'text-yellow-500' },
+              'HARD_RULE_PRICE_BELOW_OPEN': { label: 'Price Below Candle Open',    icon: '🔻', color: 'text-rose-500' },
+              'HARD_RULE_PRICE_ABOVE_OPEN': { label: 'Price Above Candle Open',    icon: '🔺', color: 'text-rose-500' },
+              'HARD_RULE_EMA9_PULLBACK_PREV_RED':   { label: 'Pullback: Prev Candle Red', icon: '↩️', color: 'text-rose-500' },
+              'HARD_RULE_EMA9_PULLBACK_PREV_GREEN': { label: 'Pullback: Prev Candle Green', icon: '↩️', color: 'text-rose-500' },
+              'CANDLE_ENTRY_START':         { label: 'Waiting: Candle Just Opened', icon: '⏳', color: 'text-blue-400' },
+              'CANDLE_ENTRY_END':           { label: 'Window Closed: Candle Ending', icon: '⌛', color: 'text-blue-400' },
+              'MAX_TRADES_PER_CANDLE':      { label: 'Max Trades This Candle',     icon: '🚫', color: 'text-rose-500' },
+              'LOSS_LIMIT_CANDLE':          { label: 'Loss Limit Hit This Candle', icon: '🛑', color: 'text-rose-500' },
+              'CONSEC_LOSS_PAUSE':          { label: 'Consecutive Loss Pause',     icon: '⏸️', color: 'text-rose-500' },
+              'DAILY_LIMIT':               { label: 'Daily Trade Limit Reached',  icon: '📅', color: 'text-rose-500' },
+              'DAILY_PROFIT_TARGET':        { label: 'Daily Profit Target Hit!',   icon: '🎉', color: 'text-emerald-500' },
+              'NEWS_BLOCK':                 { label: 'News Event Blocking Entry',  icon: '📰', color: 'text-yellow-500' },
+              'MAX_POSITIONS':              { label: 'Max Positions Open',         icon: '🔒', color: 'text-rose-500' },
+              'NO_DATA':                    { label: 'Waiting for Market Data',    icon: '📡', color: 'text-slate-400' },
+            };
 
-        {/* Profit Rate */}
-        <div className={`bg-gradient-to-br from-white dark:from-slate-800 to-slate-50 dark:to-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl dark:shadow-none relative overflow-hidden group transition-colors duration-500 ${displayPnL >= 0 ? 'hover:border-emerald-500/30' : 'hover:border-rose-500/30'}`}>
-          <div className={`absolute -right-6 -top-6 w-24 h-24 rounded-full blur-2xl transition-colors ${displayPnL >= 0 ? 'bg-emerald-500/5 group-hover:bg-emerald-500/10' : 'bg-rose-500/5 group-hover:bg-rose-500/10'}`}></div>
-          <p className="text-slate-900 dark:text-slate-100 font-medium mb-1">Profit Rate</p>
-          <h2 className={`text-4xl font-bold tracking-tight ${displayPnL >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-            {displayWinRate}%
-          </h2>
-          <div className="mt-4 w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
-            <div className={`h-full rounded-full ${displayPnL >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`} style={{ width: `${displayWinRate}%` }}></div>
-          </div>
-        </div>
+            const mapped = blockLabels[blockRaw];
+            const blockLabel = mapped?.label || (blockRaw ? blockRaw.replace(/_/g, ' ') : 'Scanning for Setup…');
+            const blockIcon = mapped?.icon || '🔍';
+            const blockColor = mapped?.color || 'text-slate-400';
 
-        {/* Total Trades */}
-        <div className="bg-gradient-to-br from-white dark:from-slate-800 to-slate-50 dark:to-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl dark:shadow-none relative overflow-hidden group hover:border-purple-500/30 transition-colors duration-500">
-          <div className="absolute -right-6 -top-6 w-24 h-24 bg-purple-500/5 rounded-full blur-2xl group-hover:bg-purple-500/10 transition-colors"></div>
-          <p className="text-slate-900 dark:text-slate-100 font-medium mb-1">Trades</p>
-          <h2 className="text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-            {displayTotal}
-          </h2>
-          <div className="mt-4 flex items-center gap-4 text-sm font-medium">
-            <span className="text-emerald-600">{displayWins} Wins</span>
-            <span className="text-rose-600">{displayLosses} Losses</span>
-          </div>
-        </div>
-
-        {/* Conditional Card: Market Trend OR Active Filter */}
-        {filterType === 'today' ? (
-          <div className={`bg-gradient-to-br from-white dark:from-slate-800 to-slate-50 dark:to-slate-900 p-6 rounded-2xl border shadow-2xl dark:shadow-none relative overflow-hidden group transition-colors duration-500 ${
-            marketState 
-              ? (marketState.trend_label === 'UP' 
-                  ? 'border-emerald-500/30 hover:border-emerald-500/60' 
-                  : marketState.trend_label === 'DOWN'
-                    ? 'border-rose-500/30 hover:border-rose-500/60'
-                    : 'border-amber-500/30 hover:border-amber-500/60')
-              : 'border-slate-200 dark:border-slate-700'
-          }`}>
-            <div className={`absolute -right-6 -top-6 w-24 h-24 rounded-full blur-2xl transition-colors ${
-              marketState 
-                ? (marketState.trend_label === 'UP' 
-                    ? 'bg-emerald-500/5 group-hover:bg-emerald-500/5' 
-                    : marketState.trend_label === 'DOWN'
-                      ? 'bg-rose-500/5 group-hover:bg-rose-500/5'
-                      : 'bg-amber-500/5 group-hover:bg-amber-500/10')
-                : 'bg-slate-50 dark:bg-slate-9000/5'
-            }`}></div>
-            <p className="text-slate-900 dark:text-slate-100 font-medium mb-1">Market Trend</p>
-            <h2 className={`text-4xl font-bold tracking-tight capitalize ${
-                marketState 
-                ? (marketState.trend_label === 'UP' 
-                    ? 'text-emerald-600' 
-                    : marketState.trend_label === 'DOWN'
-                      ? 'text-rose-600'
-                      : 'text-amber-500')
-                : 'text-slate-500 dark:text-slate-400'
-            }`}>
-              {marketState 
-                ? (marketState.trend_label === 'UP' 
-                    ? 'UPTREND' 
-                    : marketState.trend_label === 'DOWN'
-                      ? 'DOWNTREND'
-                      : 'SIDEWAYS')
-                : 'WAITING'}
-            </h2>
-            <div className="mt-4 flex items-center gap-2 text-sm font-bold text-slate-500 dark:text-slate-400">
-              {!marketState && <span className="animate-pulse">Loading Live Data...</span>}
-            </div>
-          </div>
-        ) : (
-          <div className="bg-gradient-to-br from-white dark:from-slate-800 to-slate-50 dark:to-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl dark:shadow-none relative overflow-hidden group hover:border-orange-500/30 transition-colors duration-500">
-            <div className="absolute -right-6 -top-6 w-24 h-24 bg-orange-500/5 rounded-full blur-2xl group-hover:bg-orange-500/10 transition-colors"></div>
-            <p className="text-slate-900 dark:text-slate-100 font-medium mb-1">Active Filter</p>
-            <h2 className="text-4xl font-bold tracking-tight text-orange-500 capitalize">
-              {filterType === 'all' ? 'All Time' : filterType.replace(/-/g, ' ')}
-            </h2>
-            <div className="mt-4 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 font-medium">
-              <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-              Historical View
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* DETAILED STATS ROW */}
-      <div className={`max-w-7xl mx-auto grid grid-cols-2 ${filterType === 'today' ? 'md:grid-cols-6 lg:grid-cols-6' : 'md:grid-cols-5 lg:grid-cols-5'} gap-4 mb-12 relative z-10`}>
-        {filterType === 'today' && (
-          <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-none">
-            <p className="text-slate-900 dark:text-slate-100 text-xs font-semibold uppercase tracking-wider mb-1 flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5" /> Live Balance</p>
-            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{balance !== null ? `$${balance.toFixed(2)}` : '...'}</p>
-          </div>
-        )}
-        <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-none">
-          <p className="text-slate-900 dark:text-slate-100 text-xs font-semibold uppercase tracking-wider mb-1">Gross Profit</p>
-          <p className="text-xl font-bold text-emerald-600">+${grossProfit.toFixed(2)}</p>
-        </div>
-        <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-none">
-          <p className="text-slate-900 dark:text-slate-100 text-xs font-semibold uppercase tracking-wider mb-1">Gross Loss</p>
-          <p className="text-xl font-bold text-rose-600">-${Math.abs(grossLoss).toFixed(2)}</p>
-        </div>
-        <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-none">
-          <p className="text-slate-900 dark:text-slate-100 text-xs font-semibold uppercase tracking-wider mb-1">Profit Factor</p>
-          <p className={`text-xl font-bold ${grossProfit > Math.abs(grossLoss) ? 'text-emerald-600' : (grossProfit === Math.abs(grossLoss) && grossProfit > 0 ? 'text-slate-900 dark:text-slate-100' : 'text-rose-600')}`}>
-            {Math.abs(grossLoss) > 0 ? (grossProfit / Math.abs(grossLoss)).toFixed(2) : (grossProfit > 0 ? '∞' : '0.00')}
-          </p>
-        </div>
-        <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-none">
-          <p className="text-slate-900 dark:text-slate-100 text-xs font-semibold uppercase tracking-wider mb-1">Avg Win</p>
-          <p className="text-xl font-bold text-emerald-600">$<CountUp end={avgWin} decimals={2} duration={1.5} preserveValue /></p>
-        </div>
-        <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-none">
-          <p className="text-slate-900 dark:text-slate-100 text-xs font-semibold uppercase tracking-wider mb-1">Avg Loss</p>
-          <p className="text-xl font-bold text-rose-600">-$<CountUp end={Math.abs(avgLoss)} decimals={2} duration={1.5} preserveValue /></p>
-        </div>
-      </div>
-
-      {/* ACTIVE TRADE DISPLAY BOX */}
-      {filterType === 'today' && activeTrades.length > 0 && activeTrades.map((activeTrade, idx) => (
-        <div key={activeTrade.ticket || idx} className="max-w-7xl mx-auto mb-8 relative z-10 animate-in fade-in slide-in-from-top-4 duration-500">
-          <div className={`p-6 rounded-2xl border backdrop-blur-xl shadow-lg dark:shadow-none relative overflow-hidden ${
-            activeTrade.profit_dollars >= 0 
-              ? 'bg-emerald-500/5 border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.15)]' 
-              : 'bg-red-500/10 border-red-500/30 shadow-[0_0_30px_rgba(239,68,68,0.15)]'
-          }`}>
-            <div className="absolute top-0 left-0 w-full h-1">
-              <div className={`h-full w-full animate-pulse ${activeTrade.profit_dollars >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-            </div>
-            
-            <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-              
-              {/* Left Side: Direction & Profit */}
-              <div className="flex flex-col items-center md:items-start w-full md:w-1/3">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className={`px-3 py-1 rounded-full text-xs font-bold tracking-wider ${
-                    activeTrade.direction === 'BUY' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
-                  }`}>
-                    {activeTrade.direction}
+            return (
+              <div className="w-full mb-4 animate-in fade-in duration-300">
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-4">
+                  {/* Header */}
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Live Analysis</span>
                   </div>
-                  <span className="text-slate-900 dark:text-slate-100 font-medium opacity-70 text-sm">#{activeTrade.ticket}</span>
-                  <div className="flex items-center gap-1 ml-2 text-xs font-bold px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700">
-                    <Activity className="w-3 h-3" /> {activeTrade.volume.toFixed(2)} LOTS
+
+                  {/* Block Reason */}
+                  <div className="flex items-center gap-2 mb-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700/50">
+                    <span className="text-base">{blockIcon}</span>
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Status</div>
+                      <div className={`text-sm font-black ${blockColor}`}>{blockLabel}</div>
+                    </div>
                   </div>
+
+                  {/* Indicator Grid */}
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {/* EMA 9 Angle */}
+                    <div className="bg-slate-50 dark:bg-slate-900/40 rounded-lg p-2 border border-slate-100 dark:border-slate-700/40">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">EMA 9 Angle</div>
+                      <div className={`text-sm font-black ${Math.abs(ema9Angle) >= 8 ? 'text-emerald-500' : 'text-orange-400'}`}>
+                        {ema9Angle >= 0 ? '+' : ''}{ema9Angle.toFixed(1)}°
+                      </div>
+                    </div>
+                    {/* EMA 21 Angle */}
+                    <div className="bg-slate-50 dark:bg-slate-900/40 rounded-lg p-2 border border-slate-100 dark:border-slate-700/40">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">EMA 21 Angle</div>
+                      <div className={`text-sm font-black ${Math.abs(ema21Angle) >= 4 ? 'text-emerald-500' : 'text-orange-400'}`}>
+                        {ema21Angle >= 0 ? '+' : ''}{ema21Angle.toFixed(1)}°
+                      </div>
+                    </div>
+                    {/* ATR */}
+                    <div className="bg-slate-50 dark:bg-slate-900/40 rounded-lg p-2 border border-slate-100 dark:border-slate-700/40">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">ATR(14)</div>
+                      <div className={`text-sm font-black ${atr14 >= 1.20 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                        {atr14.toFixed(2)}
+                      </div>
+                    </div>
+                    {/* Velocity */}
+                    <div className="bg-slate-50 dark:bg-slate-900/40 rounded-lg p-2 border border-slate-100 dark:border-slate-700/40">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Velocity</div>
+                      <div className={`text-sm font-black ${Math.abs(velocity) >= 0.05 ? 'text-emerald-500' : 'text-orange-400'}`}>
+                        {velocity >= 0 ? '+' : ''}{velocity.toFixed(3)}
+                      </div>
+                    </div>
+                    {/* Candle */}
+                    <div className="bg-slate-50 dark:bg-slate-900/40 rounded-lg p-2 border border-slate-100 dark:border-slate-700/40">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Candle</div>
+                      <div className={`text-sm font-black ${candleColor === 'GREEN' ? 'text-emerald-500' : candleColor === 'RED' ? 'text-rose-500' : 'text-slate-400'}`}>
+                        {candleColor === 'GREEN' ? '▲' : candleColor === 'RED' ? '▼' : '—'} {candleColor}
+                      </div>
+                    </div>
+                    {/* Score */}
+                    <div className="bg-slate-50 dark:bg-slate-900/40 rounded-lg p-2 border border-slate-100 dark:border-slate-700/40">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Score</div>
+                      <div className={`text-sm font-black ${Math.max(buyScore, sellScore) >= 80 ? 'text-emerald-500' : Math.max(buyScore, sellScore) >= 60 ? 'text-orange-400' : 'text-rose-500'}`}>
+                        {candleColor === 'GREEN' ? buyScore.toFixed(0) : sellScore.toFixed(0)}/100
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ACTIVE TRADE DISPLAY BOX (SIDEBAR) */}
+          {activeTrades.length > 0 && activeTrades.map((activeTrade, idx) => (
+            <div key={activeTrade.ticket || idx} className="w-full mb-4 relative z-10 animate-in fade-in slide-in-from-top-4 duration-500">
+              <div className={`p-5 rounded-2xl border backdrop-blur-xl shadow-lg dark:shadow-none relative overflow-hidden ${
+                activeTrade.profit_dollars >= 0 
+                  ? 'bg-emerald-500/5 border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.15)]' 
+                  : 'bg-red-500/10 border-red-500/30 shadow-[0_0_30px_rgba(239,68,68,0.15)]'
+              }`}>
+                <div className="absolute top-0 left-0 w-full h-1">
+                  <div className={`h-full w-full animate-pulse ${activeTrade.profit_dollars >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
                 </div>
                 
-                <div className={`text-5xl font-black tracking-tighter ${
-                  activeTrade.profit_dollars >= 0 ? 'text-emerald-600' : 'text-red-600'
-                }`}>
-                  {activeTrade.profit_dollars >= 0 ? '+' : ''}${activeTrade.profit_dollars.toFixed(2)}
-                </div>
-                <div className={`text-sm font-bold flex items-center gap-2 ${
-                  activeTrade.profit_dollars >= 0 ? 'text-emerald-600/80' : 'text-red-600/80'
-                }`}>
-                  <span>{activeTrade.profit_points >= 0 ? '+' : ''}{activeTrade.profit_points.toFixed(1)} pts</span>
-                  <span className="text-slate-500 dark:text-slate-400">&bull;</span>
-                  <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
-                    <Clock className="w-3.5 h-3.5" />
-                    <LiveTimer openTime={activeTrade.open_time} />
+                <div className="flex flex-col items-center gap-4">
+                  
+                  {/* Profit Tracking */}
+                  <div className="flex flex-col items-center w-full text-center">
+                    <div className={`text-4xl font-black tracking-tighter ${
+                      activeTrade.profit_dollars >= 0 ? 'text-emerald-600' : 'text-red-600'
+                    }`}>
+                      {activeTrade.profit_dollars >= 0 ? '+' : ''}${activeTrade.profit_dollars.toFixed(2)}
+                    </div>
+                    <div className={`text-xs font-bold flex flex-col items-center gap-1 mt-1 ${
+                      activeTrade.profit_dollars >= 0 ? 'text-emerald-600/80' : 'text-red-600/80'
+                    }`}>
+                      <span>{activeTrade.profit_points >= 0 ? '+' : ''}{activeTrade.profit_points.toFixed(1)} pts</span>
+                      <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                        <Clock className="w-3.5 h-3.5" />
+                        <LiveTimer openTime={activeTrade.open_time} />
+                      </div>
+                    </div>
+                    
+                    {activeTrade.sl !== undefined && activeTrade.sl > 0 && activeTrade.tp > 0 && (
+                      <div className="w-full mt-3">
+                        <ProgressBar 
+                          entry={activeTrade.entry_price} 
+                          current={activeTrade.current_price} 
+                          sl={activeTrade.sl} 
+                          tp={activeTrade.tp} 
+                          direction={activeTrade.direction} 
+                        />
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Metrics Grid */}
+                  <div className="grid grid-cols-2 gap-2 w-full">
+                    <div className="bg-white dark:bg-slate-800/60 p-2 rounded-lg border border-slate-200 dark:border-slate-700/50 flex flex-col items-center justify-center text-center">
+                      <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-0.5">Direction</span>
+                      <span className={`text-base font-bold ${activeTrade.direction === 'BUY' ? 'text-emerald-600' : 'text-red-600'}`}>{activeTrade.direction}</span>
+                    </div>
+                    <div className="bg-white dark:bg-slate-800/60 p-2 rounded-lg border border-slate-200 dark:border-slate-700/50 flex flex-col items-center justify-center text-center">
+                      <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-0.5">Lot Size</span>
+                      <span className="text-base font-bold text-slate-900 dark:text-slate-100">{activeTrade.volume.toFixed(2)}</span>
+                    </div>
+                    <div className="bg-white dark:bg-slate-800/60 p-2 rounded-lg border border-slate-200 dark:border-slate-700/50 flex flex-col items-center justify-center text-center">
+                      <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-0.5">Entry</span>
+                      <span className="text-base font-bold text-slate-900 dark:text-slate-100">{activeTrade.entry_price.toFixed(2)}</span>
+                    </div>
+                    <div className="bg-white dark:bg-slate-800/60 p-2 rounded-lg border border-slate-200 dark:border-slate-700/50 flex flex-col items-center justify-center text-center">
+                      <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-0.5">Take Profit</span>
+                      <span className="text-base font-bold text-emerald-600">{activeTrade.tp !== undefined && activeTrade.tp > 0 ? activeTrade.tp.toFixed(2) : 'NONE'}</span>
+                    </div>
+                  </div>
+                  <div className="bg-white dark:bg-slate-800/60 p-2 rounded-lg border border-slate-200 dark:border-slate-700/50 flex flex-col items-center justify-center text-center w-full">
+                    <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-0.5 leading-tight">Stoploss / Trailing SL</span>
+                    <span className={`text-base font-bold mt-0.5 ${
+                      activeTrade.sl !== undefined && activeTrade.sl > 0 && (
+                        (activeTrade.direction === 'BUY' && activeTrade.sl > activeTrade.entry_price) || 
+                        (activeTrade.direction === 'SELL' && activeTrade.sl < activeTrade.entry_price)
+                      ) ? 'text-emerald-500' : 'text-rose-600'
+                    }`}>
+                      {activeTrade.sl !== undefined && activeTrade.sl > 0 ? activeTrade.sl.toFixed(2) : 'NONE'}
+                    </span>
+                  </div>
+                  
+                  {/* Exit Button */}
+                  <div className="w-full mt-1">
+                    <button onClick={() => executeExit(activeTrade.ticket)} disabled={isTrading} className="p-3 rounded-xl bg-slate-900 border border-slate-800 hover:bg-rose-600 hover:border-rose-500 text-emerald-500 hover:text-white flex items-center justify-center font-bold text-xs tracking-widest transition-all duration-300 group disabled:opacity-50 shadow-lg dark:shadow-none hover:shadow-rose-500/20 w-full min-h-[48px]">
+                      <div className="w-2 h-2 rounded-full bg-emerald-400 group-hover:hidden mr-2 animate-ping"></div>
+                      <span className="group-hover:hidden">LIVE TRADE</span>
+                      <span className="hidden group-hover:block text-white uppercase">Close Trade</span>
+                    </button>
                   </div>
                 </div>
-                
-                {activeTrade.sl !== undefined && activeTrade.sl > 0 && activeTrade.tp > 0 && (
-                  <ProgressBar 
-                    entry={activeTrade.entry_price} 
-                    current={activeTrade.current_price} 
-                    sl={activeTrade.sl} 
-                    tp={activeTrade.tp} 
-                    direction={activeTrade.direction} 
-                  />
-                )}
               </div>
-              
-              {/* Right Side: Metrics Grid */}
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 w-full md:w-auto flex-1">
-                <div className="bg-white dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/50 flex flex-col items-center justify-center">
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1">Entry</span>
-                  <span className="text-lg font-bold text-slate-900 dark:text-slate-100">{activeTrade.entry_price.toFixed(2)}</span>
-                </div>
-                <div className="bg-white dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/50 flex flex-col items-center justify-center">
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1">Current</span>
-                  <span className="text-lg font-bold text-slate-900 dark:text-slate-100">{activeTrade.current_price.toFixed(2)}</span>
-                </div>
-                <div className="bg-white dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/50 flex flex-col items-center justify-center">
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1">Take Profit</span>
-                  <span className="text-lg font-bold text-emerald-600">{activeTrade.tp !== undefined && activeTrade.tp > 0 ? activeTrade.tp.toFixed(2) : 'NONE'}</span>
-                </div>
-                <div className="bg-white dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/50 flex flex-col items-center justify-center">
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1">Stop Loss</span>
-                  <span className="text-lg font-bold text-rose-600">{activeTrade.sl !== undefined && activeTrade.sl > 0 ? activeTrade.sl.toFixed(2) : 'NONE'}</span>
-                </div>
-              </div>
-              
-              {/* Status Box */}
-              <div className="flex flex-col gap-2 w-full md:w-auto md:min-w-[160px]">
-                <div className={`p-3 rounded-xl border flex items-center justify-center font-bold tracking-wide text-xs ${
-                  activeTrade.is_higher ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 text-emerald-700' : 
-                  activeTrade.is_lower ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 text-rose-700' : 
-                  'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
-                }`}>
-                  {activeTrade.is_higher ? 'HIGHER' : activeTrade.is_lower ? 'LOWER' : 'INSIDE RANGE'}
-                </div>
-                <button onClick={() => executeExit(activeTrade.ticket)} disabled={isTrading} className="p-3 rounded-xl bg-slate-900 border border-slate-800 hover:bg-rose-600 hover:border-rose-500 text-emerald-500 hover:text-white flex items-center justify-center font-bold text-xs tracking-widest transition-all duration-300 group disabled:opacity-50 shadow-lg dark:shadow-none hover:shadow-rose-500/20">
-                  <div className="w-2 h-2 rounded-full bg-emerald-400 group-hover:hidden mr-2 animate-ping"></div>
-                  <span className="group-hover:hidden">LIVE TRADE</span>
-                  <span className="hidden group-hover:block uppercase">Close Trade</span>
-                </button>
-              </div>
-              
             </div>
-          </div>
+          )) }
         </div>
-      ))}
-      {/* P&L EQUITY CURVE */}
-      {viewMode === 'trades' && filteredTrades.length > 0 && (
-        <div className="max-w-7xl mx-auto mb-8 relative z-10 grid grid-cols-1 lg:grid-cols-[60%_40%] gap-6">
+
+        {/* RIGHT MAIN AREA */}
+        <div className="flex flex-col gap-6 min-w-0">
+
+
+      {/* P&L EQUITY CURVE & SESSION STATS */}
+      {(viewMode === 'trades' || viewMode === 'history') && filteredTrades.length > 0 && (
+        <div className="w-full mb-8 relative z-10 grid grid-cols-1 xl:grid-cols-[57%_43%] gap-6">
           <div className="bg-blue-50 dark:bg-slate-800 shadow-xl shadow-blue-100 dark:shadow-none rounded-2xl border border-blue-200 dark:border-slate-700 p-6">
             <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-blue-600" />
@@ -943,104 +986,115 @@ export default function Home() {
       )}
 
       {/* RECENT TRADES / NEWS TABLE */}
-      <div className="max-w-7xl mx-auto relative z-10">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-          <div className="flex items-center gap-4">
-            <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-slate-900 dark:text-slate-100" />
-              Activity
-            </h3>
-            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
-              <button
-                onClick={() => setViewMode('trades')}
-                className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${
-                  viewMode === 'trades' 
-                    ? 'bg-blue-600 text-white shadow-lg dark:shadow-none' 
-                    : 'text-slate-900 dark:text-slate-100 hover:text-slate-900 dark:text-slate-100'
-                }`}
-              >
-                Trades
-              </button>
-              <button
-                onClick={() => setViewMode('news')}
-                className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all flex items-center gap-1.5 ${
-                  viewMode === 'news' 
-                    ? 'bg-indigo-600 text-white shadow-lg dark:shadow-none' 
-                    : 'text-slate-900 dark:text-slate-100 hover:text-slate-900 dark:text-slate-100'
-                }`}
-              >
-                <Globe className="w-4 h-4" /> News
-              </button>
-              <button
-                onClick={() => setViewMode('manual')}
-                className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all flex items-center gap-1.5 ${
-                  viewMode === 'manual' 
-                    ? 'bg-rose-600 text-white shadow-lg dark:shadow-none' 
-                    : 'text-slate-900 dark:text-slate-100 hover:text-slate-900 dark:text-slate-100'
-                }`}
-              >
-                <Target className="w-4 h-4" /> Manual Trade
-              </button>
-
-            </div>
-          </div>
+      <div className="w-full relative z-10">
+        <div className="flex flex-col gap-6 mb-6">
           
-          {viewMode === 'trades' && (
-            <div className="flex items-center gap-1.5 mt-4 md:mt-0">
-            <button
-              onClick={() => setDirFilter(dirFilter === 'BUY' ? 'ALL' : 'BUY')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${
-                dirFilter === 'BUY' 
-                  ? 'bg-blue-50 dark:bg-slate-8000/20 text-blue-600 border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.2)]'
-                  : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'
-              }`}
-            >
-              BUY
-            </button>
-            <button
-              onClick={() => setDirFilter(dirFilter === 'SELL' ? 'ALL' : 'SELL')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${
-                dirFilter === 'SELL' 
-                  ? 'bg-fuchsia-500/20 text-fuchsia-600 border-fuchsia-500/50 shadow-[0_0_10px_rgba(217,70,239,0.2)]'
-                  : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'
-              }`}
-            >
-              SELL
-            </button>
-            
-            <div className="w-px h-5 bg-slate-800 mx-1"></div>
-            
-            <button
-              onClick={() => setResultFilter(resultFilter === 'WIN' ? 'ALL' : 'WIN')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${
-                resultFilter === 'WIN' 
-                  ? 'bg-emerald-500/20 text-emerald-600 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.2)]'
-                  : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'
-              }`}
-            >
-              WIN
-            </button>
-            <button
-              onClick={() => setResultFilter(resultFilter === 'LOSS' ? 'ALL' : 'LOSS')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${
-                resultFilter === 'LOSS' 
-                  ? 'bg-rose-500/20 text-rose-600 border-rose-500/50 shadow-[0_0_10px_rgba(244,63,94,0.2)]'
-                  : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'
-              }`}
-            >
-              LOSS
-            </button>
+          {/* Top Section: Title & Tabs */}
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Clock className="w-5 h-5 text-slate-900 dark:text-slate-100" />
+                Activity
+              </h3>
+              
+              <div className="flex flex-wrap bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
+                <button
+                  onClick={() => setViewMode('trades')}
+                  className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${viewMode === 'trades' ? 'bg-blue-600 text-white shadow-lg dark:shadow-none' : 'text-slate-900 dark:text-slate-100 hover:text-slate-900 dark:text-slate-100'}`}
+                >
+                  Trades
+                </button>
+                <button
+                  onClick={() => setViewMode('news')}
+                  className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all flex items-center gap-1.5 ${viewMode === 'news' ? 'bg-indigo-600 text-white shadow-lg dark:shadow-none' : 'text-slate-900 dark:text-slate-100 hover:text-slate-900 dark:text-slate-100'}`}
+                >
+                  <Globe className="w-4 h-4" /> News
+                </button>
+                <button
+                  onClick={() => setViewMode('manual')}
+                  className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all flex items-center gap-1.5 ${viewMode === 'manual' ? 'bg-rose-600 text-white shadow-lg dark:shadow-none' : 'text-slate-900 dark:text-slate-100 hover:text-slate-900 dark:text-slate-100'}`}
+                >
+                  <Target className="w-4 h-4" /> Manual Trade
+                </button>
+                <button
+                  onClick={() => setViewMode('history')}
+                  className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all flex items-center gap-1.5 ${viewMode === 'history' ? 'bg-purple-600 text-white shadow-lg dark:shadow-none' : 'text-slate-900 dark:text-slate-100 hover:text-slate-900 dark:text-slate-100'}`}
+                >
+                  <Clock className="w-4 h-4" /> History
+                </button>
+              </div>
+            </div>
 
-            <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+            {/* Table Filters (BUY / SELL / COPY) - Placed top right to save space */}
+            {(viewMode === 'trades' || viewMode === 'history') && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-slate-500 uppercase mr-1 tracking-wider hidden xl:block">Table Filters:</span>
+                <button
+                  onClick={() => setDirFilter(dirFilter === 'BUY' ? 'ALL' : 'BUY')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${dirFilter === 'BUY' ? 'bg-blue-50 dark:bg-slate-8000/20 text-blue-600 border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'}`}
+                >
+                  BUY
+                </button>
+                <button
+                  onClick={() => setDirFilter(dirFilter === 'SELL' ? 'ALL' : 'SELL')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${dirFilter === 'SELL' ? 'bg-fuchsia-500/20 text-fuchsia-600 border-fuchsia-500/50 shadow-[0_0_10px_rgba(217,70,239,0.2)]' : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'}`}
+                >
+                  SELL
+                </button>
+                
+                <div className="w-px h-5 bg-slate-300 dark:bg-slate-600 mx-1"></div>
+                
+                <button
+                  onClick={() => setResultFilter(resultFilter === 'WIN' ? 'ALL' : 'WIN')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${resultFilter === 'WIN' ? 'bg-emerald-500/20 text-emerald-600 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'}`}
+                >
+                  WIN
+                </button>
+                <button
+                  onClick={() => setResultFilter(resultFilter === 'LOSS' ? 'ALL' : 'LOSS')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${resultFilter === 'LOSS' ? 'bg-rose-500/20 text-rose-600 border-rose-500/50 shadow-[0_0_10px_rgba(244,63,94,0.2)]' : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'}`}
+                >
+                  LOSS
+                </button>
 
-            <button
-              onClick={handleCopyTrades}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800 hover:text-slate-900 dark:text-slate-100 flex items-center gap-1.5"
-              title="Copy Trade Data"
-            >
-              <Copy className="w-3.5 h-3.5" /> Copy
-            </button>
+                <div className="w-px h-5 bg-slate-300 dark:bg-slate-600 mx-1 hidden sm:block"></div>
+
+                <button
+                  onClick={handleCopyTrades}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800 hover:text-slate-900 dark:text-slate-100 flex items-center gap-1.5"
+                  title="Copy Trade Data"
+                >
+                  <Copy className="w-3.5 h-3.5" /> Copy
+                </button>
+              </div>
+            )}
           </div>
+
+          {/* Bottom Section: History Date Filters */}
+          {viewMode === 'history' && (
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Date Range:</span>
+              <div className="flex flex-wrap items-center gap-2">
+                {['today', 'yesterday', 'this-week', 'last-week', 'this-month', 'last-month', 'last-6-months', 'all', 'custom'].map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => { setFilterType(f); if (f !== 'custom') setCustomDate(''); }}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all shadow-sm ${filterType === f ? 'bg-blue-600 text-white shadow-blue-500/25 border border-blue-600' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+                  >
+                    {f === 'all' ? 'All Time' : f === 'custom' ? 'Custom Date' : f.replace(/-/g, ' ')}
+                  </button>
+                ))}
+                
+                {filterType === 'custom' && (
+                  <input 
+                    type="date"
+                    value={customDate}
+                    onChange={(e) => setCustomDate(e.target.value)}
+                    className="px-3 py-1.5 rounded-lg text-sm font-bold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 shadow-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                )}
+              </div>
+            </div>
           )}
         </div>
         
@@ -1048,80 +1102,95 @@ export default function Home() {
       {viewMode === 'manual' && (
         <div className="max-w-7xl mx-auto mb-12 relative z-10">
           <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl dark:shadow-none p-6 backdrop-blur-xl">
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+          <div className="flex flex-col gap-6">
             
-            <div className="flex-1">
-              <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-1 flex items-center gap-2">
-                <Target className="w-5 h-5 text-emerald-600" />
-                Manual Execution Terminal
-              </h3>
-              <p className="text-sm text-slate-900 dark:text-slate-100">Execute instant MT5 trades with bot trailing-stop handoff.</p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">Lot Size</label>
-                <input 
-                  type="number" step="0.01" 
-                  value={lotSize} onChange={(e) => setLotSize(e.target.value)}
-                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100 w-24 outline-none focus:border-emerald-500/50"
-                />
-              </div>
-              
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">Trades</label>
-                <input 
-                  type="number" step="1" 
-                  value={tradeCount} onChange={(e) => setTradeCount(e.target.value)}
-                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100 w-20 outline-none focus:border-emerald-500/50"
-                />
+            {/* Top Row: Title & Action Buttons */}
+            <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">
+              <div className="flex-1">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-1 flex items-center gap-2">
+                  <Target className="w-5 h-5 text-emerald-600" />
+                  Manual Execution Terminal
+                </h3>
+                <p className="text-sm text-slate-900 dark:text-slate-100">Execute instant MT5 trades with bot trailing-stop handoff.</p>
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">SL (Pts)</label>
-                <input 
-                  type="number" step="0.1" 
-                  value={slPoints} onChange={(e) => setSlPoints(e.target.value)}
-                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100 w-24 outline-none focus:border-emerald-500/50"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">TP (Pts)</label>
-                <input 
-                  type="number" step="0.1" 
-                  value={tpPoints} onChange={(e) => setTpPoints(e.target.value)}
-                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100 w-24 outline-none focus:border-emerald-500/50"
-                />
-              </div>
-
-              <div className="hidden md:block w-px h-10 bg-slate-800 mx-2"></div>
-
-              <div className="flex items-center gap-2 mt-4 md:mt-0">
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   disabled={isTrading}
                   onClick={() => executeTrade('BUY')}
-                  className="px-6 py-2 bg-blue-500/5 hover:bg-blue-50 dark:bg-slate-8000/20 text-blue-600 border border-blue-500/30 rounded-lg font-bold shadow-[0_0_15px_rgba(59,130,246,0.15)] transition-all disabled:opacity-50"
+                  className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black shadow-lg shadow-blue-500/30 transition-all disabled:opacity-50 tracking-wider"
                 >
                   BUY
                 </button>
                 <button
                   disabled={isTrading}
                   onClick={() => executeTrade('SELL')}
-                  className="px-6 py-2 bg-fuchsia-500/10 hover:bg-fuchsia-500/20 text-fuchsia-600 border border-fuchsia-500/30 rounded-lg font-bold shadow-[0_0_15px_rgba(217,70,239,0.15)] transition-all disabled:opacity-50"
+                  className="px-8 py-3 bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-xl font-black shadow-lg shadow-fuchsia-500/30 transition-all disabled:opacity-50 tracking-wider"
                 >
                   SELL
                 </button>
                 <button
                   disabled={isTrading}
                   onClick={() => executeExit('ALL')}
-                  className="px-6 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border border-rose-500/30 rounded-lg font-bold shadow-[0_0_15px_rgba(244,63,94,0.15)] transition-all disabled:opacity-50 ml-2 uppercase"
+                  className="px-6 py-3 bg-rose-100 dark:bg-rose-500/10 hover:bg-rose-200 dark:hover:bg-rose-500/20 text-rose-600 border border-rose-500/30 rounded-xl font-black transition-all disabled:opacity-50 uppercase tracking-wider ml-2"
                 >
                   Exit Trade
                 </button>
               </div>
             </div>
-            
+
+            {/* Bottom Row: Settings Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 bg-slate-50 dark:bg-slate-900/50 p-5 rounded-xl border border-slate-200 dark:border-slate-700">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Lot Size</label>
+                <input 
+                  type="number" step="0.01" 
+                  value={lotSize} onChange={(e) => setLotSize(e.target.value)}
+                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500/50 transition-colors"
+                />
+              </div>
+              
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Trades</label>
+                <input 
+                  type="number" step="1" 
+                  value={tradeCount} onChange={(e) => setTradeCount(e.target.value)}
+                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500/50 transition-colors"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">SL (Pts)</label>
+                <input 
+                  type="number" step="0.1" 
+                  value={slPoints} onChange={(e) => setSlPoints(e.target.value)}
+                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500/50 transition-colors"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">TP (Pts)</label>
+                <input 
+                  type="number" step="0.1" 
+                  value={tpPoints} onChange={(e) => setTpPoints(e.target.value)}
+                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500/50 transition-colors"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Timeframe</label>
+                <select 
+                  value={manualTimeframe} onChange={(e) => setManualTimeframe(e.target.value)}
+                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500/50 transition-colors appearance-none"
+                >
+                  <option value="M1">M1</option>
+                  <option value="M5">M5</option>
+                  <option value="M15">M15</option>
+                  <option value="M30">M30</option>
+                  <option value="H1">H1</option>
+                </select>
+              </div>
+            </div>
           </div>
           
 
@@ -1368,6 +1437,8 @@ export default function Home() {
         </div>
         )}
       </div>
-    </div>
+      </div>
+      </div>
+      </div>
   );
 }

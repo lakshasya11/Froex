@@ -48,6 +48,15 @@ def get_trades(filter_type, custom_date):
             start_of_month = today.replace(day=1).strftime("%Y-%m-%d")
             where_clause = "WHERE date(entry_time) >= ?"
             params.append(start_of_month)
+        elif filter_type == "last-month":
+            import datetime as dt
+            today = dt.datetime.now()
+            first_day_this_month = today.replace(day=1)
+            last_day_last_month = first_day_this_month - dt.timedelta(days=1)
+            start_of_last_month = last_day_last_month.replace(day=1).strftime("%Y-%m-%d")
+            end_of_last_month = last_day_last_month.strftime("%Y-%m-%d")
+            where_clause = "WHERE date(entry_time) BETWEEN ? AND ?"
+            params.extend([start_of_last_month, end_of_last_month])
         elif filter_type == "last-6-months":
             import datetime as dt
             today = dt.datetime.now()
@@ -72,7 +81,9 @@ def get_trades(filter_type, custom_date):
         COUNT(*) as total_trades,
         SUM(CASE WHEN profit_dollars > 0 THEN 1 ELSE 0 END) as winning_trades,
         SUM(CASE WHEN profit_dollars <= 0 THEN 1 ELSE 0 END) as losing_trades,
-        SUM(profit_dollars) as net_profit
+        SUM(profit_dollars) as net_profit,
+        SUM(CASE WHEN profit_dollars > 0 THEN profit_dollars ELSE 0 END) as gross_profit,
+        SUM(CASE WHEN profit_dollars < 0 THEN ABS(profit_dollars) ELSE 0 END) as gross_loss
       FROM trades {where_clause}
     """
     cursor.execute(stats_query, params)

@@ -126,7 +126,7 @@ class TerminalFormatter:
         )
 
         if score:
-            import backend.config as config
+            import config
             w_m = getattr(config, "WEIGHT_MOMENTUM", 1.0)
             w_t = getattr(config, "WEIGHT_TREND", 1.0)
             w_c = getattr(config, "WEIGHT_CANDLE", 1.0)
@@ -534,8 +534,8 @@ class TerminalFormatter:
             start_window = 5
             end_window = tf_secs - 5
         else:
-            start_window = 15
-            end_window = tf_secs - 20
+            start_window = 5
+            end_window = tf_secs - 10
 
         if positions:
             pos = positions[0]
@@ -626,7 +626,16 @@ class TerminalFormatter:
         price_display = f"{cc_color}{Colors.BOLD}{tick.bid:.2f}{T}"
         candle_display = f"{cc_color}{arrow} {curr_candle:<5}{T}"
         sequence_display = f"{seq_color}{seq_status:<9}{T}"
-        prev_body_display = f"{DIM}PB{T}:{Colors.BOLD}{prev_body:.2f}{T}"
+        import config
+        min_gap = getattr(config, "MIN_EMA_GAP_PTS", 0.35)
+        ema_9 = analysis.get("ema_9")
+        ema_21 = analysis.get("ema_21")
+        if ema_9 is not None and ema_21 is not None:
+            ema_gap = abs(ema_9 - ema_21)
+            gap_color = Colors.GREEN if ema_gap >= min_gap else Colors.YELLOW
+            gap_display = f"{DIM}GAP:{T}{gap_color}{Colors.BOLD}{ema_gap:.2f}{T}"
+        else:
+            gap_display = f"{DIM}GAP:{T}{Colors.YELLOW}N/A{T}"
         velocity_display = f"{DIM}V{T}:{v_color}{vsm:+.2f}{T} {DIM}A{T}:{avg_v_str}"
         trend_color = (
             Colors.GREEN
@@ -646,29 +655,44 @@ class TerminalFormatter:
         # Score display removed since momentum scoring is disabled
 
         print(
-            f"{time_display}  {tick_display}  {price_display}  {candle_display}  {sequence_display}  {prev_body_display}  {indicators_display}  {velocity_display}  {status}"
+            f"{time_display}  {tick_display}  {price_display}  {candle_display}  {sequence_display}  {gap_display}  {indicators_display}  {velocity_display}  {status}"
         )
 
-    def print_candle_movement(self, timeframe, candle_range, body_size, o, h, l, c, block_reason):
+    def print_candle_movement(self, timeframe, candle_range, body_size, o, h, l, c, block_reason, win_rate=0.0, net_pnl=0.0, total_trades=0):
         title = f"{timeframe} CANDLE COMPLETED"
+        G = self.GREEN
+        R = self.RED
+        Y = self.YELLOW
+        B = self.BOLD
+        Z = self.RESET
+
+        wr_color = G if win_rate >= 60 else Y if win_rate >= 45 else R
+        pnl_color = G if net_pnl >= 0 else R
+        pnl_sign = "+" if net_pnl >= 0 else ""
+
         rows = [
             (
                 f"Total Movement: ${candle_range:.2f}",
-                f"Total Movement: {self.BOLD}${candle_range:.2f}{self.RESET}"
+                f"Total Movement: {B}${candle_range:.2f}{Z}"
             ),
             (
                 f"Body Size:      ${body_size:.2f}",
-                f"Body Size:      {self.BOLD}${body_size:.2f}{self.RESET}"
+                f"Body Size:      {B}${body_size:.2f}{Z}"
             ),
             "---",
             (
                 f"O: {o:.2f}  H: {h:.2f}  L: {l:.2f}  C: {c:.2f}",
-                f"O:{self.BOLD}{o:.2f}{self.RESET}  H:{self.BOLD}{h:.2f}{self.RESET}  L:{self.BOLD}{l:.2f}{self.RESET}  C:{self.BOLD}{c:.2f}{self.RESET}"
+                f"O:{B}{o:.2f}{Z}  H:{B}{h:.2f}{Z}  L:{B}{l:.2f}{Z}  C:{B}{c:.2f}{Z}"
             ),
             "---",
             (
                 f"Status: {block_reason}",
-                f"Status: {self.YELLOW}{block_reason}{self.RESET}" if block_reason != "Trades Taken" else f"Status: {self.GREEN}{block_reason}{self.RESET}"
-            )
+                f"Status: {Y}{block_reason}{Z}" if block_reason != "Trades Taken" else f"Status: {G}{block_reason}{Z}"
+            ),
+            "===",
+            (
+                f"Today  Trades: {total_trades}   WR: {win_rate:.1f}%   P&L: ${pnl_sign}{net_pnl:.2f}",
+                f"Today  Trades: {B}{total_trades}{Z}   WR: {wr_color}{B}{win_rate:.1f}%{Z}   P&L: {pnl_color}{B}${pnl_sign}{net_pnl:.2f}{Z}"
+            ),
         ]
         self._box(title, rows, self.MAGENTA)
