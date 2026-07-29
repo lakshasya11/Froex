@@ -1,25 +1,17 @@
 import MetaTrader5 as mt5
 from indicators import TechnicalIndicators
 import config
-from config import (
-    ENTRY_VEL_FRESH,
-    ENTRY_AVG_FRESH,
-    MIN_ENTRY_2S_VEL,
-    MIN_BODY_SIZE,
-    MAX_CONFIRMATION_DRIFT,
-    EMA_ANGLE_THRESHOLD,
-)
 from dataclasses import dataclass
 
 
 @dataclass
 class MomentumScore:
-    total: float
-    momentum: float
-    trend: float
-    candle: float
-    execution: float
-    grade: str
+    total: float = 0.0
+    momentum: float = 0.0
+    trend: float = 0.0
+    candle: float = 0.0
+    execution: float = 0.0
+    grade: str = "C"
     block_reason: str = ""
     # Momentum Breakdown Sub-scores
     vel_score: float = 0.0
@@ -32,6 +24,13 @@ class MomentumScore:
     trend_state: str = "WAITING"
     sideways_score: int = 0
     required_score: float = 80.0
+
+
+@dataclass
+class SignalValidationResult:
+    blocked: bool
+    block_reason: str = ""
+    context: dict = None  # Holds pre-computed metrics for scoring
 
 
 class EnhancedTradingStrategy:
@@ -75,6 +74,159 @@ class EnhancedTradingStrategy:
 
         return analysis
 
+    def get_setting(self, key: str, default_val: float) -> float:
+        st_settings = getattr(config, "SYMBOL_TIMEFRAME_SETTINGS", {}).get(self.symbol, {}).get(self.base_timeframe, {})
+        if key in st_settings:
+            return st_settings[key]
+        s_settings = getattr(config, "SYMBOL_SETTINGS", {}).get(self.symbol, {})
+        if key in s_settings:
+            return s_settings[key]
+        return getattr(config, key, default_val)
+
+    def validate_signal(self, direction: str, tick, analysis: dict) -> SignalValidationResult:
+        if not tick or not analysis:
+            return SignalValidationResult(blocked=True, block_reason="NO_DATA")
+
+        _curr_color = analysis.get("candle_color", "UNKNOWN")
+        _prev_color = analysis.get("prev_color", "UNKNOWN")
+        
+        fallback_price = TechnicalIndicators.get_effective_price(tick)
+        _curr_price = analysis.get("close", fallback_price)
+
+        _instant_velocity = analysis.get("velocity", 0.0)
+        _avg_velocity = analysis.get("avg_velocity", 0.0) or 0.0
+
+        _current_open = analysis.get("open", _curr_price)
+        _curr_body = abs(_curr_price - _current_open)
+        _ema_9 = analysis.get("ema_9")
+        _ema_9_angle = analysis.get("ema_9_angle", 0.0)
+
+        _ema_21 = analysis.get("ema_21")
+        _ema_21_angle = analysis.get("ema_21_angle", 0.0)
+
+        _atr_14 = analysis.get("atr_14", 0.0)
+        _current_high = analysis.get("current_high", _curr_price)
+        _current_low = analysis.get("current_low", _curr_price)
+        _candle_range = _current_high - _current_low
+        dist_to_high = _current_high - _curr_price
+        dist_to_low = _curr_price - _current_low
+        
+        spread = 0.0
+        if tick.ask > 0.0 and tick.bid > 0.0:
+            spread = tick.ask - tick.bid
+
+        vel_limit = getattr(config, "ENTRY_VEL_FRESH", 0.05)
+        avg_limit = getattr(config, "ENTRY_AVG_FRESH", 0.03)
+
+        wick_tolerance = max(0.20, _atr_14 * 0.10)
+
+        min_atr = self.get_setting("MIN_ATR_THRESHOLD", 1.20)
+        min_ema_gap = self.get_setting("MIN_EMA_GAP_PTS", 0.35)
+        ema21_angle_thresh = self.get_setting("EMA21_ANGLE_THRESHOLD", 4.0)
+        ema9_angle_thresh = self.get_setting("EMA9_ANGLE_THRESHOLD", 8.0)
+        
+        base_min_candle_range = self.get_setting("MIN_CANDLE_RANGE", 0.20)
+        candle_range_atr_mult = self.get_setting("CANDLE_RANGE_ATR_MULT", 0.30)
+        min_candle_range = max(base_min_candle_range, _atr_14 * candle_range_atr_mult)
+        
+        min_body_size = self.get_setting("MIN_BODY_SIZE", 0.10)
+        max_spread = self.get_setting("SPREAD_ALLOWANCE", 0.20)
+
+        ema_gap = abs(_ema_9 - _ema_21) if _ema_9 is not None and _ema_21 is not None else 0.0
+
+        # Store context that might be useful for scoring later
+        context = {
+            "curr_price": _curr_price,
+            "instant_velocity": _instant_velocity,
+            "avg_velocity": _avg_velocity,
+            "curr_body": _curr_body,
+            "candle_range": _candle_range,
+            "atr_14": _atr_14,
+            "ema_9_angle": _ema_9_angle,
+            "ema_21_angle": _ema_21_angle,
+            "spread": spread,
+            "vel_limit": vel_limit,
+            "avg_limit": avg_limit,
+            "dist_to_high": dist_to_high,
+            "dist_to_low": dist_to_low,
+            "wick_tolerance": wick_tolerance,
+            "ema_gap": ema_gap,
+            "min_ema_gap": min_ema_gap,
+            "ema9_angle_min": ema9_angle_thresh,
+            "ema21_angle_min": ema21_angle_thresh,
+        }
+
+        def block(reason: str) -> SignalValidationResult:
+            return SignalValidationResult(blocked=True, block_reason=reason, context=context)
+
+        if spread > 0.0 and spread > max_spread:
+            return block(f"HARD_RULE_SPREAD_TOO_HIGH ({spread:.2f} > {max_spread:.2f})")
+
+        if _atr_14 < min_atr:
+            return block("HARD_RULE_ATR_TOO_LOW")
+
+        if _ema_9 is not None and _ema_21 is not None:
+            if abs(_ema_9 - _ema_21) < min_ema_gap:
+                return block("HARD_RULE_EMA_GAP_TOO_SMALL")
+
+        if abs(_ema_21_angle) < ema21_angle_thresh:
+            return block("HARD_RULE_EMA21_ANGLE_WEAK")
+
+        if abs(_ema_9_angle) < ema9_angle_thresh:
+            return block("HARD_RULE_EMA9_ANGLE_WEAK")
+
+
+        if direction == "BUY":
+            # --- ALLOW COUNTER-TREND PULLBACK BUY ---
+            # Standard Rule: EMA 9 must be above EMA 21
+            # Exception: Allow BUY if EMA 9 is below EMA 21 ONLY WHEN both prev & curr candles are GREEN
+            if _ema_9 is not None and _ema_21 is not None and _ema_9 <= _ema_21:
+                if not (_curr_color == "GREEN" and _prev_color == "GREEN"):
+                    return block("HARD_RULE_EMA9_BELOW_EMA21")
+
+            if _curr_color != "GREEN":
+                return block("HARD_RULE_CURR_COLOR_MISMATCH")
+            if _curr_body < min_body_size:
+                return block("HARD_RULE_MIN_BODY_SIZE")
+            if _ema_9 is not None and _curr_price < _ema_9:
+                if _prev_color != "GREEN":
+                    return block("HARD_RULE_EMA9_PULLBACK_PREV_RED")
+            if (_curr_price - _current_open) <= 0:
+                return block("HARD_RULE_PRICE_BELOW_OPEN")
+            dist_to_high = _current_high - _curr_price
+            if dist_to_high > wick_tolerance:
+                return block("HARD_RULE_NOT_AT_HIGH")
+            if _instant_velocity < vel_limit:
+                return block("HARD_RULE_VELOCITY")
+            if _avg_velocity < avg_limit:
+                return block("HARD_RULE_AVG_VELOCITY")
+        else:
+            # --- ALLOW COUNTER-TREND PULLBACK SELL ---
+            # Standard Rule: EMA 9 must be below EMA 21
+            # Exception: Allow SELL if EMA 9 is above EMA 21 ONLY WHEN both prev & curr candles are RED
+            if _ema_9 is not None and _ema_21 is not None and _ema_9 >= _ema_21:
+                if not (_curr_color == "RED" and _prev_color == "RED"):
+                    return block("HARD_RULE_EMA9_ABOVE_EMA21")
+
+            if _curr_color != "RED":
+                return block("HARD_RULE_CURR_COLOR_MISMATCH")
+            if _curr_body < min_body_size:
+                return block("HARD_RULE_MIN_BODY_SIZE")
+            if _ema_9 is not None and _curr_price > _ema_9:
+                if _prev_color != "RED":
+                    return block("HARD_RULE_EMA9_PULLBACK_PREV_GREEN")
+            if (_curr_price - _current_open) >= 0:
+                return block("HARD_RULE_PRICE_ABOVE_OPEN")
+            dist_to_low = _curr_price - _current_low
+            if dist_to_low > wick_tolerance:
+                return block("HARD_RULE_NOT_AT_LOW")
+            if _instant_velocity > -vel_limit:
+                return block("HARD_RULE_VELOCITY")
+            if _avg_velocity > -avg_limit:
+                return block("HARD_RULE_AVG_VELOCITY")
+
+        return SignalValidationResult(blocked=False, context=context)
+
     def calculate_momentum_score(
         self, direction: str, tick, analysis: dict, state: dict
     ) -> MomentumScore:
@@ -87,150 +239,84 @@ class EnhancedTradingStrategy:
             grade="A+",
             block_reason="",
         )
-        score.required_score = 100.0
+        score.required_score = self.get_setting("MOMENTUM_SCORE_THRESHOLD", 80.0)
 
-        if not tick or not analysis:
-            score.block_reason = "NO_DATA"
+        validation_result = self.validate_signal(direction, tick, analysis)
+        if validation_result.blocked:
+            score.block_reason = validation_result.block_reason
             return score
+            
+        ctx = validation_result.context
+        
+        # Start from 100 and deduct/bonus
+        score.total = 100.0
 
-        # --- EXTRACT METRICS ---
-        _curr_color = analysis.get("candle_color", "UNKNOWN")
-        _prev_color = analysis.get("prev_color", "UNKNOWN")
-        _curr_price = tick.bid
+        # Retrieve factors dynamically
+        vel_penalty_factor = self.get_setting("VEL_PENALTY_FACTOR", 1.5)
+        vel_bonus_factor = self.get_setting("VEL_BONUS_FACTOR", 2.0)
+        wick_penalty_factor = self.get_setting("WICK_PENALTY_FACTOR", 0.5)
+        wick_bonus_factor = self.get_setting("WICK_BONUS_FACTOR", 0.2)
+        ema_angle_bonus_mult = self.get_setting("EMA_ANGLE_BONUS_MULT", 2.0)
+        ema_gap_bonus_mult = self.get_setting("EMA_GAP_BONUS_MULT", 1.5)
 
-        _instant_velocity = analysis.get("velocity", 0.0)
-        _avg_velocity = analysis.get("avg_velocity", 0.0) or 0.0
+        # --- Velocity quality ---
+        vel = ctx["instant_velocity"]
+        vel_limit = ctx["vel_limit"]
+        avg_vel = ctx["avg_velocity"]
+        avg_limit = ctx["avg_limit"]
 
-        _current_open = analysis.get("open", tick.bid)
-        _curr_body = abs(tick.bid - _current_open)
-        _prev_body = analysis.get("prev_body", 0.0)
-        _ema_9 = analysis.get("ema_9")
-        _prev_ema_9 = analysis.get("prev_ema_9")
-        _ema_9_angle = analysis.get("ema_9_angle", 0.0)
-
-        _ema_21 = analysis.get("ema_21")
-        _prev_ema_21 = analysis.get("prev_ema_21")
-        _ema_21_angle = analysis.get("ema_21_angle", 0.0)
-
-        _atr_14 = analysis.get("atr_14", 0.0)
-        _current_high = analysis.get("current_high", tick.bid)
-        _current_low = analysis.get("current_low", tick.bid)
-
-        vel_limit = getattr(config, "ENTRY_VEL_FRESH", 0.05)
-        avg_limit = getattr(config, "ENTRY_AVG_FRESH", 0.03)
-
-
-        # =========================================================================
-        # 🟢 BUY ENTRY CONDITIONS
-        # =========================================================================
         if direction == "BUY":
+            # Barely above minimum → penalty
+            if vel_limit <= vel < vel_limit * vel_penalty_factor:
+                score.total -= 10
+                score.vel_score = 90
+            elif vel >= vel_limit * vel_bonus_factor:
+                score.total += 5
+                score.vel_score = 105
+        else:  # SELL
+            if -vel_limit >= vel > -vel_limit * vel_penalty_factor:  # vel_limit is positive, vel is negative
+                score.total -= 10
+                score.vel_score = 90
+            elif vel <= -vel_limit * vel_bonus_factor:
+                score.total += 5
+                score.vel_score = 105
 
-            # 1. Sideways & Choppiness Guards
-            if _atr_14 < getattr(config, "MIN_ATR_THRESHOLD", 1.20):
-                score.block_reason = "HARD_RULE_ATR_TOO_LOW"
-                return score
-            if _ema_9 is not None and _ema_21 is not None:
-                if abs(_ema_9 - _ema_21) < getattr(config, "MIN_EMA_GAP_PTS", 0.35):
-                    score.block_reason = "HARD_RULE_EMA_GAP_TOO_SMALL"
-                    return score
-                
-            # 2. EMA Trend Alignment & Angles
-            if _ema_9 is not None and _ema_21 is not None and _ema_9 <= _ema_21:
-                score.block_reason = "HARD_RULE_EMA9_BELOW_EMA21"
-                return score
-            if abs(_ema_21_angle) < getattr(config, "EMA21_ANGLE_THRESHOLD", 5.0):
-                score.block_reason = "HARD_RULE_EMA21_ANGLE_WEAK"
-                return score
-            if abs(_ema_9_angle) < getattr(config, "EMA_ANGLE_THRESHOLD", 10.0):
-                score.block_reason = "HARD_RULE_EMA9_ANGLE_WEAK"
-                return score
+        # --- Wick & close quality ---
+        dist_to_extreme = ctx["dist_to_high"] if direction == "BUY" else ctx["dist_to_low"]
+        wick_tol = ctx["wick_tolerance"]
 
-            # 3. Candle & Price Structure
-            if _curr_color != "GREEN":
-                score.block_reason = "HARD_RULE_CURR_COLOR_MISMATCH"
-                return score
-            if _curr_body < 0.10:
-                score.block_reason = "HARD_RULE_MIN_BODY_SIZE"
-                return score
-            
-            # Pullback Protection
-            if _ema_9 is not None and _curr_price < _ema_9:
-                if _prev_color != "GREEN":
-                    score.block_reason = "HARD_RULE_EMA9_PULLBACK_PREV_RED"
-                    return score
+        if dist_to_extreme > wick_tol * wick_penalty_factor:     # inside tolerance but not tight
+            score.total -= 5
+            score.cons_score = 95
+        elif dist_to_extreme <= wick_tol * wick_bonus_factor:  # very strong close
+            score.total += 5
+            score.cons_score = 105
 
-            # 4. Live Forming Candle & Tick Trajectory
-            if (_curr_price - _current_open) <= 0:
-                score.block_reason = "HARD_RULE_PRICE_BELOW_OPEN"
-                return score
-            
-            dist_to_high = _current_high - _curr_price
-            if dist_to_high > 0.15:
-                score.block_reason = "HARD_RULE_NOT_AT_HIGH"
-                return score
+        # --- Trend quality (EMA angles & gap) ---
+        ema9_angle = ctx["ema_9_angle"]
+        ema21_angle = ctx["ema_21_angle"]
+        ema_gap = ctx["ema_gap"]
+        min_gap = ctx["min_ema_gap"]
 
-            if _instant_velocity < vel_limit:
-                score.block_reason = "HARD_RULE_VELOCITY"
-                return score
-            if _avg_velocity < avg_limit:
-                score.block_reason = "HARD_RULE_AVG_VELOCITY"
-                return score
+        if abs(ema9_angle) > ctx["ema9_angle_min"] * ema_angle_bonus_mult:
+            score.total += 5
+            score.trend = 105
+        if ema_gap > min_gap * ema_gap_bonus_mult:
+            score.total += 5
 
-        # =========================================================================
-        # 🔴 SELL ENTRY CONDITIONS
-        # =========================================================================
+        # Clamp and grade
+        score.total = max(0.0, min(100.0, score.total))
+
+        if score.total >= 100:
+            score.grade = "A+"
+        elif score.total >= 90:
+            score.grade = "A"
+        elif score.total >= 80:
+            score.grade = "B"
         else:
+            score.grade = "C"
+        
+        if score.total < score.required_score:
+            score.block_reason = f"SCORE_TOO_LOW ({score.total:.1f} < {score.required_score:.1f})"
 
-            # 1. Sideways & Choppiness Guards
-            if _atr_14 < getattr(config, "MIN_ATR_THRESHOLD", 1.20):
-                score.block_reason = "HARD_RULE_ATR_TOO_LOW"
-                return score
-            if _ema_9 is not None and _ema_21 is not None:
-                if abs(_ema_9 - _ema_21) < getattr(config, "MIN_EMA_GAP_PTS", 0.35):
-                    score.block_reason = "HARD_RULE_EMA_GAP_TOO_SMALL"
-                    return score
-                
-            # 2. EMA Trend Alignment & Angles
-            if _ema_9 is not None and _ema_21 is not None and _ema_9 >= _ema_21:
-                score.block_reason = "HARD_RULE_EMA9_ABOVE_EMA21"
-                return score
-            if abs(_ema_21_angle) < getattr(config, "EMA21_ANGLE_THRESHOLD", 5.0):
-                score.block_reason = "HARD_RULE_EMA21_ANGLE_WEAK"
-                return score
-            if abs(_ema_9_angle) < getattr(config, "EMA_ANGLE_THRESHOLD", 10.0):
-                score.block_reason = "HARD_RULE_EMA9_ANGLE_WEAK"
-                return score
-
-            # 3. Candle & Price Structure
-            if _curr_color != "RED":
-                score.block_reason = "HARD_RULE_CURR_COLOR_MISMATCH"
-                return score
-            if _curr_body < 0.10:
-                score.block_reason = "HARD_RULE_MIN_BODY_SIZE"
-                return score
-
-            # Pullback Protection
-            if _ema_9 is not None and _curr_price > _ema_9:
-                if _prev_color != "RED":
-                    score.block_reason = "HARD_RULE_EMA9_PULLBACK_PREV_GREEN"
-                    return score
-
-            # 4. Live Forming Candle & Tick Trajectory
-            if (_curr_price - _current_open) >= 0:
-                score.block_reason = "HARD_RULE_PRICE_ABOVE_OPEN"
-                return score
-
-            dist_to_low = _curr_price - _current_low
-            if dist_to_low > 0.15:
-                score.block_reason = "HARD_RULE_NOT_AT_LOW"
-                return score
-
-            if _instant_velocity > -vel_limit:
-                score.block_reason = "HARD_RULE_VELOCITY"
-                return score
-            if _avg_velocity > -avg_limit:
-                score.block_reason = "HARD_RULE_AVG_VELOCITY"
-                return score
-
-        # All rules validated successfully!
         return score

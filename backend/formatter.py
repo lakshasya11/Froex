@@ -1,7 +1,7 @@
-from config import ENTRY_VEL_FRESH, ENTRY_AVG_FRESH, MIN_ENTRY_2S_VEL
 import os
 import sys
-from datetime import datetime
+import config
+from datetime import datetime, timezone
 import MetaTrader5 as mt5
 
 
@@ -126,7 +126,6 @@ class TerminalFormatter:
         )
 
         if score:
-            import config
             w_m = getattr(config, "WEIGHT_MOMENTUM", 1.0)
             w_t = getattr(config, "WEIGHT_TREND", 1.0)
             w_c = getattr(config, "WEIGHT_CANDLE", 1.0)
@@ -156,8 +155,6 @@ class TerminalFormatter:
             )
 
     def print_news_calendar(self, events):
-        from datetime import datetime, timezone
-
         now_utc = datetime.now(timezone.utc)
 
         B = self.BOLD
@@ -483,7 +480,6 @@ class TerminalFormatter:
         )
 
         curr_candle = analysis.get("current_candle", "")
-
         cc_color = Colors.get_candle_color(curr_candle)
 
         prev_body = analysis.get("prev_body", 0.0)
@@ -516,9 +512,12 @@ class TerminalFormatter:
         vsm = analysis.get("velocity", 0.0)
         velocity_2s = analysis.get("velocity_2s", 0.0)
         velocity_2s_ready = analysis.get("velocity_2s_ready", False)
-        current_open = analysis.get("open", tick.bid)
 
-
+        # Dynamic parameter retrieval via bot's strategy instance
+        entry_vel_fresh = bot.strategy.get_setting("ENTRY_VEL_FRESH", 0.05)
+        entry_avg_fresh = bot.strategy.get_setting("ENTRY_AVG_FRESH", 0.03)
+        min_entry_2s_vel = bot.strategy.get_setting("MIN_ENTRY_2S_VEL", 0.02)
+        min_gap = bot.strategy.get_setting("MIN_EMA_GAP_PTS", 0.35)
 
         tf_secs = 300
         if bot.timeframe == "M1":
@@ -558,44 +557,40 @@ class TerminalFormatter:
             elif is_mixed:
                 status = ""
             elif curr_candle == "GREEN":
-                _v_req = ENTRY_VEL_FRESH
-                _a_req = ENTRY_AVG_FRESH
-                _vel_ok = abs(vsm) >= _v_req
-                _avg_ok = avg_v_raw is not None and abs(avg_v_raw) >= _a_req
+                _vel_ok = abs(vsm) >= entry_vel_fresh
+                _avg_ok = avg_v_raw is not None and abs(avg_v_raw) >= entry_avg_fresh
 
                 score = bot.strategy.calculate_momentum_score("BUY", tick, analysis, {})
                 block = score.block_reason
 
                 if not _vel_ok:
-                    status = f"{Colors.CYAN}BUY  vel:{abs(vsm):.2f} < {_v_req}{Colors.RESET}"
+                    status = f"{Colors.CYAN}BUY  vel:{abs(vsm):.2f} < {entry_vel_fresh}{Colors.RESET}"
                 elif not velocity_2s_ready:
                     status = f"{Colors.ORANGE}BUY  2s not ready{Colors.RESET}"
-                elif abs(velocity_2s) < MIN_ENTRY_2S_VEL:
-                    status = f"{Colors.ORANGE}BUY  2s:{abs(velocity_2s):.2f} < {MIN_ENTRY_2S_VEL:.2f}{Colors.RESET}"
+                elif abs(velocity_2s) < min_entry_2s_vel:
+                    status = f"{Colors.ORANGE}BUY  2s:{abs(velocity_2s):.2f} < {min_entry_2s_vel:.2f}{Colors.RESET}"
                 elif not _avg_ok:
-                    status = f"{Colors.YELLOW}BUY  avg:{abs(avg_v_raw):.2f} < {_a_req}{Colors.RESET}"
+                    status = f"{Colors.YELLOW}BUY  avg:{abs(avg_v_raw):.2f} < {entry_avg_fresh}{Colors.RESET}"
                 elif block:
                     status = f"{Colors.YELLOW}BUY  ✓ vel:{abs(vsm):.2f} avg:{abs(avg_v_raw):.2f} {Colors.RED}[{block}]{Colors.RESET}"
                 else:
                     status = f"{Colors.CYAN}BUY  ✓ vel:{abs(vsm):.2f} avg:{abs(avg_v_raw):.2f}{Colors.RESET}"
 
             elif curr_candle == "RED":
-                _v_req = ENTRY_VEL_FRESH
-                _a_req = ENTRY_AVG_FRESH
-                _vel_ok = abs(vsm) >= _v_req
-                _avg_ok = avg_v_raw is not None and abs(avg_v_raw) >= _a_req
+                _vel_ok = abs(vsm) >= entry_vel_fresh
+                _avg_ok = avg_v_raw is not None and abs(avg_v_raw) >= entry_avg_fresh
 
                 score = bot.strategy.calculate_momentum_score("SELL", tick, analysis, {})
                 block = score.block_reason
 
                 if not _vel_ok:
-                    status = f"{Colors.MAGENTA}SELL vel:{abs(vsm):.2f} < {_v_req}{Colors.RESET}"
+                    status = f"{Colors.MAGENTA}SELL vel:{abs(vsm):.2f} < {entry_vel_fresh}{Colors.RESET}"
                 elif not velocity_2s_ready:
                     status = f"{Colors.ORANGE}SELL 2s not ready{Colors.RESET}"
-                elif abs(velocity_2s) < MIN_ENTRY_2S_VEL:
-                    status = f"{Colors.ORANGE}SELL 2s:{abs(velocity_2s):.2f} < {MIN_ENTRY_2S_VEL:.2f}{Colors.RESET}"
+                elif abs(velocity_2s) < min_entry_2s_vel:
+                    status = f"{Colors.ORANGE}SELL 2s:{abs(velocity_2s):.2f} < {min_entry_2s_vel:.2f}{Colors.RESET}"
                 elif not _avg_ok:
-                    status = f"{Colors.YELLOW}SELL avg:{abs(avg_v_raw):.2f} < {_a_req}{Colors.RESET}"
+                    status = f"{Colors.YELLOW}SELL avg:{abs(avg_v_raw):.2f} < {entry_avg_fresh}{Colors.RESET}"
                 elif block:
                     status = f"{Colors.YELLOW}SELL ✓ vel:{abs(vsm):.2f} avg:{abs(avg_v_raw):.2f} {Colors.RED}[{block}]{Colors.RESET}"
                 else:
@@ -605,7 +600,6 @@ class TerminalFormatter:
 
         avg_v_str = f"{avg_v_raw:+.2f}" if avg_v_raw is not None else " N/A"
         v_color = Colors.GREEN if vsm >= 0 else Colors.RED
-
 
         arrow = "" if curr_candle == "GREEN" else "" if curr_candle == "RED" else "─"
 
@@ -626,8 +620,7 @@ class TerminalFormatter:
         price_display = f"{cc_color}{Colors.BOLD}{tick.bid:.2f}{T}"
         candle_display = f"{cc_color}{arrow} {curr_candle:<5}{T}"
         sequence_display = f"{seq_color}{seq_status:<9}{T}"
-        import config
-        min_gap = getattr(config, "MIN_EMA_GAP_PTS", 0.35)
+
         ema_9 = analysis.get("ema_9")
         ema_21 = analysis.get("ema_21")
         if ema_9 is not None and ema_21 is not None:
@@ -651,8 +644,6 @@ class TerminalFormatter:
         angle_21_color = Colors.GREEN if ema_21_angle >= 5 else Colors.RED if ema_21_angle <= -5 else Colors.YELLOW
         
         indicators_display = f"{DIM}TR:{T}{trend_color}{display_trend:<4}{T} {DIM}EMA9∠:{T}{angle_9_color}{ema_9_angle:+.1f}°{T} {DIM}EMA21∠:{T}{angle_21_color}{ema_21_angle:+.1f}°{T}"
-
-        # Score display removed since momentum scoring is disabled
 
         print(
             f"{time_display}  {tick_display}  {price_display}  {candle_display}  {sequence_display}  {gap_display}  {indicators_display}  {velocity_display}  {status}"
@@ -695,4 +686,4 @@ class TerminalFormatter:
                 f"Today  Trades: {B}{total_trades}{Z}   WR: {wr_color}{B}{win_rate:.1f}%{Z}   P&L: {pnl_color}{B}${pnl_sign}{net_pnl:.2f}{Z}"
             ),
         ]
-        self._box(title, rows, self.MAGENTA)
+        self._box(title, rows, self.MAGENTA, W=70)

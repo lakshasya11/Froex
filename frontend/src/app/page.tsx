@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import CountUp from 'react-countup';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Area, AreaChart, ComposedChart, Bar, BarChart, Legend, ReferenceLine } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Area, AreaChart, ComposedChart, Bar, BarChart, Legend, ReferenceLine, PieChart, Pie, Cell } from 'recharts';
 
 import { 
   TrendingUp, 
@@ -922,63 +922,115 @@ export default function Home() {
               <TrendingUp className="w-5 h-5 text-blue-600" />
               Session Performance
             </h3>
-            <div className="h-[300px] w-full">
+            <div className="grid grid-cols-3 gap-2.5 w-full mt-2">
               {(() => {
+                // Determine active session based on local time (IST)
+                const now = new Date();
+                const hours = now.getHours();
+                const minutes = now.getMinutes();
+                const totalMinutes = hours * 60 + minutes;
 
-                const CustomXAxisTick = ({ x, y, payload }: { x?: number, y?: number, payload?: any }) => {
+                let activeSession = '';
+                // Asian: 05:30 IST (330 mins) to 14:29 IST (869 mins)
+                if (totalMinutes >= 330 && totalMinutes < 870) {
+                  activeSession = 'Asian';
+                }
+                // UK: 14:30 IST (870 mins) to 20:29 IST (1229 mins)
+                else if (totalMinutes >= 870 && totalMinutes < 1230) {
+                  activeSession = 'UK';
+                }
+                // US: 20:30 IST (1230 mins) to 05:29 IST (329 mins next day)
+                else {
+                  activeSession = 'US';
+                }
+
+                return sessionData.map((session) => {
+                  const isActive = session.name === activeSession;
+                  
+                  // Mute colors for inactive sessions to keep focus on the active one
+                  const winColor = isActive ? '#10b981' : '#94a3b8';
+                  const lossColor = isActive ? '#ef4444' : '#cbd5e1';
+                  const noTradesColor = '#e2e8f0';
+
+                  const pieData = [
+                    { name: 'Win', value: session.Win, color: winColor },
+                    { name: 'Loss', value: session.Loss, color: lossColor }
+                  ];
+                  
+                  const totalTrades = session.Win + session.Loss;
+                  const displayData = totalTrades > 0 ? pieData : [{ name: 'No Trades', value: 1, color: noTradesColor }];
+                  
                   let brokerTime = '';
                   let istTime = '';
-                  if (payload.value === 'Asian') { brokerTime = '00:00 - 08:59'; istTime = '05:30 - 14:29 IST'; }
-                  else if (payload.value === 'UK') { brokerTime = '09:00 - 14:59'; istTime = '14:30 - 20:29 IST'; }
-                  else if (payload.value === 'US') { brokerTime = '15:00 - 23:59'; istTime = '20:30 - 05:29 IST'; }
-                  
+                  if (session.name === 'Asian') { brokerTime = '00:00 - 08:59'; istTime = '05:30 - 14:29 IST'; }
+                  else if (session.name === 'UK') { brokerTime = '09:00 - 14:59'; istTime = '14:30 - 20:29 IST'; }
+                  else if (session.name === 'US') { brokerTime = '15:00 - 23:59'; istTime = '20:30 - 05:29 IST'; }
+
                   return (
-                    <g transform={`translate(${x},${y})`}>
-                      <text x={0} y={0} dy={14} textAnchor="middle" fill="#64748b" className="text-xs font-bold">{payload.value}</text>
-                      <text x={0} y={0} dy={28} textAnchor="middle" fill="#94a3b8" className="text-[10px]">{brokerTime}</text>
-                      <text x={0} y={0} dy={40} textAnchor="middle" fill="#94a3b8" className="text-[10px]">{istTime}</text>
-                    </g>
-                  );
-                };
-                
-                const CustomSessionTooltip = ({ active, payload }: { active?: boolean, payload?: any }) => {
-                  if (active && payload && payload.length) {
-                    const data = payload[0].payload;
-                    return (
-                      <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.1)] border border-slate-200 dark:border-slate-700 z-50 relative">
-                        <p className="font-bold text-slate-800 dark:text-slate-200 mb-2">{data.session} Session</p>
-                        <div className="space-y-1 text-sm">
-                          <p className="text-emerald-600 font-semibold flex justify-between gap-4">
-                            <span>Win: {data.Win}</span>
-                            <span>+${data.profit.toFixed(2)}</span>
-                          </p>
-                          <p className="text-red-500 font-semibold flex justify-between gap-4">
-                            <span>Loss: {data.Loss}</span>
-                            <span>-${data.lossAmount.toFixed(2)}</span>
-                          </p>
-                          <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-700 flex justify-between gap-4 font-bold text-slate-600 dark:text-slate-400">
-                            <span>Profit Rate</span>
-                            <span>{data.winRate}%</span>
-                          </div>
+                    <div 
+                      key={session.name} 
+                      className={`flex flex-col items-center justify-between w-full rounded-2xl p-2.5 pt-4 pb-3 shadow-sm min-h-[220px] relative transition-all duration-300 ${
+                        isActive 
+                          ? 'bg-white dark:bg-slate-900 border-2 border-blue-500 dark:border-blue-500 shadow-md shadow-blue-500/10 z-10' 
+                          : 'bg-white/80 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800 opacity-60'
+                      }`}
+                    >
+                      {isActive && (
+                        <div className="absolute -top-2.5 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse"></span>
+                          Active
+                        </div>
+                      )}
+                      
+                      <div className="text-center w-full">
+                        <span className="text-sm font-bold text-slate-800 dark:text-slate-200 block">{session.name}</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 block">{brokerTime}</span>
+                        <span className="text-[9px] text-slate-400 dark:text-slate-500 block">{istTime}</span>
+                      </div>
+                      
+                      <div className="relative w-24 h-24 flex items-center justify-center my-1.5">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={displayData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={24}
+                              outerRadius={36}
+                              paddingAngle={totalTrades > 0 ? 2 : 0}
+                              dataKey="value"
+                              startAngle={90}
+                              endAngle={-270}
+                            >
+                              {displayData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                              ))}
+                            </Pie>
+                          </PieChart>
+                        </ResponsiveContainer>
+                        <div className="absolute flex flex-col items-center justify-center">
+                          <span className="text-sm font-extrabold text-slate-800 dark:text-slate-200">
+                            {session.winRate}%
+                          </span>
+                          <span className="text-[7.5px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">
+                            Win Rate
+                          </span>
                         </div>
                       </div>
-                    );
-                  }
-                  return null;
-                };
-
-                return (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={sessionData} margin={{ top: 20, right: 10, left: 0, bottom: 30 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickMargin={10} tick={<CustomXAxisTick />} />
-                      <YAxis stroke="#94a3b8" fontSize={12} />
-                      <RechartsTooltip content={<CustomSessionTooltip />} cursor={{fill: 'rgba(241, 245, 249, 0.5)'}} />
-                      <Bar dataKey="profit" fill="#10b981" radius={[4, 4, 0, 0]} barSize={30} />
-                      <Bar dataKey="absLossAmount" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={30} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                );
+                      
+                      <div className="w-full text-center border-t border-slate-100 dark:border-slate-800/80 pt-3">
+                        <div className="flex justify-around text-xs mb-1">
+                          <span className="text-slate-500 dark:text-slate-400 font-medium">Win: <b className={isActive ? "text-emerald-600" : "text-slate-500"}>{session.Win}</b></span>
+                          <span className="text-slate-500 dark:text-slate-400 font-medium">Loss: <b className={isActive ? "text-red-500" : "text-slate-500"}>{session.Loss}</b></span>
+                        </div>
+                        <div className="flex justify-around text-[11px] font-bold">
+                          <span className={isActive ? "text-emerald-600" : "text-slate-500"}>+${session.profit.toFixed(2)}</span>
+                          <span className={isActive ? "text-red-500" : "text-slate-500"}>-${session.absLossAmount.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                });
               })()}
             </div>
           </div>

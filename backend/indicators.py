@@ -8,11 +8,21 @@ import config
 
 class TechnicalIndicators:
     """
-    A utility class that calculates technical indicators (SuperTrend, Bollinger Bands, etc.)
+    A utility class that calculates technical indicators (EMA, ATR, ADX, Bollinger Bands, etc.)
     using pandas dataframes and MetaTrader5 rate history.
     """
 
     _rate_cache = {}
+
+    @staticmethod
+    def get_effective_price(tick) -> float:
+        """
+        Determines the most accurate current price (last traded or bid).
+        This unifies price usage across indicators and strategy modules.
+        """
+        if tick is None:
+            return 0.0
+        return float(tick.last) if getattr(tick, 'last', 0.0) > 0.0 else float(tick.bid)
 
     @staticmethod
     def analyze_basic_timeframe(symbol: str, timeframe, bars: int = 100) -> dict:
@@ -20,6 +30,7 @@ class TechnicalIndicators:
         Fetches the last N bars for a given timeframe, computes candle structures,
         and calculates SuperTrend and Bollinger Bands. Returns a dictionary of indicators.
         """
+        # ── SECTION 1: FETCH RATES & CACHE VALIDATION ──
         tick = mt5.symbol_info_tick(symbol)
         if not tick:
             return {}
@@ -45,8 +56,9 @@ class TechnicalIndicators:
         current_candle = df.iloc[-1]
         last_closed = df.iloc[-2]  # previous closed candle
         current_open = current_candle["open"]
-        current_price = tick.bid
+        current_price = TechnicalIndicators.get_effective_price(tick)
 
+        # ── SECTION 2: CORE CANDLE PARAMETERS ──
         # Body-based structure detection (ignore wicks)
         prev_body_high = max(last_closed["open"], last_closed["close"])
         prev_body_low = min(last_closed["open"], last_closed["close"])
@@ -69,6 +81,15 @@ class TechnicalIndicators:
 
         prev_body_size = abs(last_closed["close"] - last_closed["open"])
 
+        current_high = float(current_candle["high"])
+        current_low = float(current_candle["low"])
+        current_body_high = max(float(current_open), float(current_price))
+        current_body_low = min(float(current_open), float(current_price))
+        current_body_size = abs(float(current_price) - float(current_open))
+        current_upper_wick = max(0.0, current_high - current_body_high)
+        current_lower_wick = max(0.0, current_body_low - current_low)
+
+        # ── SECTION 3: CANDLE HISTORY AGGREGATION ──
         recent_10 = df.iloc[-11:-1]
         recent_strong_body = any(
             abs(c["close"] - c["open"]) >= 0.30 for _, c in recent_10.iterrows()
@@ -95,14 +116,6 @@ class TechnicalIndicators:
             else 0.0
         )
 
-        current_high = float(current_candle["high"])
-        current_low = float(current_candle["low"])
-        current_body_high = max(float(current_open), float(current_price))
-        current_body_low = min(float(current_open), float(current_price))
-        current_body_size = abs(float(current_price) - float(current_open))
-        current_upper_wick = max(0.0, current_high - current_body_high)
-        current_lower_wick = max(0.0, current_body_low - current_low)
-
         # Last 5 same-color closed candle bodies (for weak-prev-body fallback)
         green_bodies = [
             abs(float(r["close"]) - float(r["open"]))
@@ -115,10 +128,8 @@ class TechnicalIndicators:
             if r["close"] < r["open"]
         ][-5:]
 
-        # ── TRUE RANGE & ATR ──
+        # ── SECTION 4: TRUE RANGE & ATR CALCULATIONS ──
         df_closed = df.iloc[:-1].copy()
-        _n = len(df_closed)
-        _cv = df_closed["close"].values
         _hv = df_closed["high"].values
         _lv = df_closed["low"].values
 
@@ -131,14 +142,13 @@ class TechnicalIndicators:
             ],
             axis=1,
         ).max(axis=1)
+        
         # Seed the first value of TR to be High - Low to avoid NA issues
         _tr.iloc[0] = _hv[0] - _lv[0]
         _atr_50_series = _tr.ewm(span=50, adjust=False).mean().values
         _atr_14_series = _tr.ewm(span=14, adjust=False).mean().values
 
-
-
-        # ── ADX (Average Directional Index) ──
+        # ── SECTION 5: AVERAGE DIRECTIONAL INDEX (ADX) ──
         adx_period = getattr(config, "ADX_PERIOD", 14)
         up_move = df_closed["high"] - df_closed["high"].shift(1)
         down_move = df_closed["low"].shift(1) - df_closed["low"]
@@ -159,6 +169,26 @@ class TechnicalIndicators:
         
         current_adx = float(adx_series.iloc[-1]) if not math.isnan(adx_series.iloc[-1]) else 0.0
 
+        # ── SECTION 6: EXPONENTIAL MOVING AVERAGES (EMA 9 & 21) ──
+        # EMA 9
+        ema_9_series = df_closed["close"].ewm(span=9, adjust=False).mean()
+        current_ema_9 = float(ema_9_series.iloc[-1]) if len(ema_9_series) > 0 else current_price
+        prev_ema_9 = float(ema_9_series.iloc[-2]) if len(ema_9_series) > 1 else current_ema_9
+        
+        # Calculate angle using inverse tangent over a 5 bar lookback window
+        lookback_bars = 5
+        ema_9_lookback = float(ema_9_series.iloc[-(lookback_bars + 1)]) if len(ema_9_series) > lookback_bars else current_ema_9
+        ema_9_angle = math.degrees(math.atan((current_ema_9 - ema_9_lookback) / lookback_bars))
+
+        # EMA 21
+        ema_21_series = df_closed["close"].ewm(span=21, adjust=False).mean()
+        current_ema_21 = float(ema_21_series.iloc[-1]) if len(ema_21_series) > 0 else current_price
+        prev_ema_21 = float(ema_21_series.iloc[-2]) if len(ema_21_series) > 1 else current_ema_21
+        
+        ema_21_lookback = float(ema_21_series.iloc[-(lookback_bars + 1)]) if len(ema_21_series) > lookback_bars else current_ema_21
+        ema_21_angle = math.degrees(math.atan((current_ema_21 - ema_21_lookback) / lookback_bars))
+
+        # ── SECTION 7: MARKET STRUCTURE LEVEL DETECTION ──
         struct_curr_h = (
             float(df_closed["high"].iloc[-1]) if len(df_closed) >= 1 else 0.0
         )
@@ -169,24 +199,6 @@ class TechnicalIndicators:
         struct_prev_l = (
             float(df_closed["low"].iloc[-2]) if len(df_closed) >= 2 else struct_curr_l
         )
-
-        # ── EMA 9 ──
-        ema_9_series = df_closed["close"].ewm(span=9, adjust=False).mean()
-        current_ema_9 = float(ema_9_series.iloc[-1]) if len(ema_9_series) > 0 else current_price
-        prev_ema_9 = float(ema_9_series.iloc[-2]) if len(ema_9_series) > 1 else current_ema_9
-        
-        # Calculate angle using inverse tangent over a 5 bar lookback window
-        lookback_bars = 5
-        ema_9_lookback = float(ema_9_series.iloc[-(lookback_bars + 1)]) if len(ema_9_series) > lookback_bars else current_ema_9
-        ema_9_angle = math.degrees(math.atan((current_ema_9 - ema_9_lookback) / lookback_bars))
-
-        # ── EMA 21 ──
-        ema_21_series = df_closed["close"].ewm(span=21, adjust=False).mean()
-        current_ema_21 = float(ema_21_series.iloc[-1]) if len(ema_21_series) > 0 else current_price
-        prev_ema_21 = float(ema_21_series.iloc[-2]) if len(ema_21_series) > 1 else current_ema_21
-        
-        ema_21_lookback = float(ema_21_series.iloc[-(lookback_bars + 1)]) if len(ema_21_series) > lookback_bars else current_ema_21
-        ema_21_angle = math.degrees(math.atan((current_ema_21 - ema_21_lookback) / lookback_bars))
 
         return {
             "close": current_price,

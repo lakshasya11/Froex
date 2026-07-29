@@ -1,7 +1,6 @@
 import MetaTrader5 as mt5
 import time
 import config
-from config import SPREAD_ALLOWANCE, TRAIL_MODIFY_MIN_INTERVAL
 
 
 class ExitMixin:
@@ -27,6 +26,10 @@ class ExitMixin:
         # Extract live EMAs for crossover exit check
         ema_9 = analysis.get("ema_9")
         ema_21 = analysis.get("ema_21")
+
+        # Resolve config parameters via dynamic 3-tier settings lookup
+        spread_allowance = self.strategy.get_setting("SPREAD_ALLOWANCE", 0.20)
+        trail_modify_min_interval = self.strategy.get_setting("TRAIL_MODIFY_MIN_INTERVAL", 0.2)
 
         for pos in positions:
             ticket = pos.ticket
@@ -55,7 +58,7 @@ class ExitMixin:
                 if direction == "BUY"
                 else (entry_price - tick.ask)
             )
-            tp_pts = pos_data.get("initial_tp_pts", 2.0) - SPREAD_ALLOWANCE
+            tp_pts = pos_data.get("initial_tp_pts", 2.0) - spread_allowance
             pos_data["last_profit_pts"] = current_profit
 
             if current_profit > (pos_data.get("peak_profit") or 0.0):
@@ -76,7 +79,8 @@ class ExitMixin:
 
             # ── SYSTEM 1: EMA CROSSOVER EXIT ──
             # Closes the trade if the short-term EMA 9 crosses back over EMA 21 against the trade direction.
-            if ema_9 is not None and ema_21 is not None:
+            # Bypass this exit if the trade is a counter-trend pullback trade.
+            if not pos_data.get("is_pullback", False) and ema_9 is not None and ema_21 is not None:
                 ema_cross_exit = False
                 if direction == "BUY" and ema_9 < ema_21:
                     ema_cross_exit = True
@@ -214,7 +218,7 @@ class ExitMixin:
             if trail_sl is not None:
                 last_modify = pos_data.get("last_sl_modify_time", 0.0)
                 now_t = time.time()
-                if (now_t - last_modify) >= TRAIL_MODIFY_MIN_INTERVAL:
+                if (now_t - last_modify) >= trail_modify_min_interval:
                     trail_sl_rounded = round(
                         round(trail_sl / tick_size) * tick_size, digits
                     )

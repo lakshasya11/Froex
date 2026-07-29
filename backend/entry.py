@@ -4,12 +4,19 @@ import config
 from datetime import datetime, timezone
 
 
-
 class EntryMixin:
     """
     Mixin class that provides the entry logic for the trading bot.
     It evaluates market ticks against a set of strict criteria (guards) to determine if a new trade should be opened.
     """
+
+    def normalize_volume(self, symbol_info, volume: float) -> float:
+        """
+        Normalizes and clamps the volume (lot size) according to the broker's step size, minimum, and maximum limits.
+        """
+        step = symbol_info.volume_step
+        vol = round(round(volume / step) * step, 2)
+        return max(symbol_info.volume_min, min(symbol_info.volume_max, vol))
 
     def check_entry_conditions(self, tick, analysis, positions):
         """
@@ -24,7 +31,7 @@ class EntryMixin:
             tuple: (entry_signal, entry_type, score) where entry_signal is "BUY", "SELL", or "NONE".
                    entry_type describes the reason for the entry (e.g., "Standard", "Re-entry").
                    score is the momentum score object if a signal is generated, else None.
-        """
+            """
         if not tick or not analysis:
             return "NONE", "NONE", None
 
@@ -46,9 +53,13 @@ class EntryMixin:
         if time.time() - getattr(self, "_last_exit_time", 0) < 2.0:
             return "NONE", "NONE", None
 
-
         # GUARD: Sideway Trend Block
-        if getattr(self, "last_trend", "NONE") == "NONE":
+        # Allow entry if last_trend is UP or DOWN, OR if two consecutive candles are aligned (RED+RED or GREEN+GREEN)
+        curr_color = analysis.get("candle_color", "UNKNOWN")
+        prev_color = analysis.get("prev_color", "UNKNOWN")
+        is_pullback_setup = (curr_color == "RED" and prev_color == "RED") or (curr_color == "GREEN" and prev_color == "GREEN")
+
+        if getattr(self, "last_trend", "NONE") == "NONE" and not is_pullback_setup:
             self.entry_block_reasons["SIDEWAY_TREND"] += 1
             return "NONE", "NONE", None
 
@@ -58,10 +69,11 @@ class EntryMixin:
             return "NONE", "NONE", None
 
         # GUARD: Hard stop if we hit the maximum allowed losses in a single candle
-        if getattr(self, "losses_this_candle", 0) >= getattr(config, "MAX_LOSSES_PER_CANDLE", 2):
+        max_losses_candle = self.strategy.get_setting("MAX_LOSSES_PER_CANDLE", 2)
+        if getattr(self, "losses_this_candle", 0) >= max_losses_candle:
             if self.loop_count % 60 == 0:
                 self.log(
-                    f"LOSS_LIMIT_CANDLE ({self.losses_this_candle}/{getattr(config, 'MAX_LOSSES_PER_CANDLE', 2)}) — wait next candle",
+                    f"LOSS_LIMIT_CANDLE ({self.losses_this_candle}/{max_losses_candle}) — wait next candle",
                     self.Colors.ORANGE,
                 )
             self.entry_block_reasons["LOSS_LIMIT_CANDLE"] += 1
@@ -78,7 +90,7 @@ class EntryMixin:
             return "NONE", "NONE", None
 
         # --- DAILY PROFIT TARGET ---
-        daily_target = getattr(config, "DAILY_PROFIT_TARGET", 500.0)
+        daily_target = self.strategy.get_setting("DAILY_PROFIT_TARGET", 500.0)
         if getattr(self, "today_profit", 0.0) >= daily_target:
             if self.loop_count % 30 == 0:
                 self.log(
@@ -89,100 +101,73 @@ class EntryMixin:
             return "NONE", "NONE", None
 
         # --- DAILY TRADE LIMIT ---
-        if getattr(self, "total_trades_today", 0) >= getattr(config, "MAX_DAILY_TRADES", 6):
+        max_daily_trades = self.strategy.get_setting("MAX_DAILY_TRADES", 6)
+        if getattr(self, "total_trades_today", 0) >= max_daily_trades:
             if self.loop_count % 30 == 0:
                 self.log(
-                    f"DAILY_LIMIT ({self.total_trades_today}/{getattr(config, 'MAX_DAILY_TRADES', 6)})",
+                    f"DAILY_LIMIT ({self.total_trades_today}/{max_daily_trades})",
                     self.Colors.ORANGE,
                 )
             self.entry_block_reasons["DAILY_LIMIT"] += 1
             return "NONE", "NONE", None
 
-        if getattr(self, "final_guard_blocks_this_candle", 0) >= 3:
-            self.entry_block_reasons["FINAL_GUARD_PAUSE"] += 1
-            return "NONE", "NONE", None
-
-        if getattr(self, "is_executing", False):
-            self.entry_block_reasons["IS_EXECUTING"] += 1
-            return "NONE", "NONE", None
-
-        # Calculate how many seconds have elapsed since the current candle opened
-        candle_open_time = analysis.get("time", 0)
-        seconds_into_candle = (
-            int(tick.time) - int(candle_open_time) if candle_open_time else 0
-        )
-
-        # GUARD: Universal Default Windows
-        # Prevent entries at the very start (volatile) or very end (exhausted) of a candle.
-        tf = getattr(self, "timeframe", "M5")
-        tf_map = {
-            "M1": 60,
-            "M5": 300,
-            "M15": 900,
-            "M30": 1800,
-        }
-        tf_secs = tf_map.get(tf, 300)
-
-        # Standardized start window for all timeframes
-        start_window = 5
+        # Filter active positions matching this symbol
+        live_positions = [p for p in positions if p.symbol == self.symbol]
+        live_count = len(live_positions)
         
-        # End window: last 5 sec for M1, last 10 sec for everything else
-        if tf == "M1" or tf == "1M":
-            end_window = tf_secs - 5
-        else:
-            end_window = tf_secs - 10
-
-        if seconds_into_candle < start_window:
-            self.entry_block_reasons["CANDLE_ENTRY_START"] = (
-                self.entry_block_reasons.get("CANDLE_ENTRY_START", 0) + 1
-            )
-            return "NONE", "NONE", None
-
-        # Block if we are at or past the end window boundary
-        if seconds_into_candle >= end_window:
-            self.entry_block_reasons["CANDLE_ENTRY_END"] = (
-                self.entry_block_reasons.get("CANDLE_ENTRY_END", 0) + 1
-            )
-            return "NONE", "NONE", None
-
-        live_count = len(positions) if positions else 0
-        max_allowed = getattr(config, "MAX_SIMULTANEOUS_POSITIONS", 1)
-
-        max_allowed_buy = max_allowed_sell = max_allowed
-
-        if live_count >= max_allowed and max_allowed > 1:
+        # Split positions by direction
+        buy_positions = [p for p in live_positions if p.type == mt5.POSITION_TYPE_BUY]
+        sell_positions = [p for p in live_positions if p.type == mt5.POSITION_TYPE_SELL]
+        
+        # --- TIME OVERRIDES ---
+        tf_settings = getattr(config, "TIMEFRAME_SETTINGS", {}).get(
+            getattr(self, "timeframe", "M5"),
+            getattr(config, "TIMEFRAME_SETTINGS", {}).get("M5", {}),
+        )
+        max_allowed_buy = tf_settings.get("MAX_TRADES_CANDLE", 3)
+        max_allowed_sell = tf_settings.get("MAX_TRADES_CANDLE", 3)
+        
+        # If scale-in exists, we handle positioning differently.
+        # Check active trades count to ensure we don't breach max cap.
+        max_positions = self.strategy.get_setting("MAX_SIMULTANEOUS_POSITIONS", 1)
+        if live_count >= max_positions:
+            # We check if scale-in is possible
+            if getattr(config, "ENABLE_SCALE_IN", False) and live_count == 1 and not self.scaled_in_tickets:
+                parent_pos = live_positions[0]
+                parent_ticket = parent_pos.ticket
+                if parent_ticket in self.position_data:
+                    parent_data = self.position_data[parent_ticket]
+                    parent_profit = parent_data.get("last_profit_pts", 0.0)
+                    if parent_profit >= getattr(config, "SCALE_IN_TRIGGER_PTS", 1.00):
+                        # Proceed to check scale-in
+                        self.execute_scale_in(parent_pos, parent_data, tick, live_count, analysis)
+                        return "NONE", "NONE", None
+            
+            # Standard block
+            if self.loop_count % 60 == 0:
+                self.log(
+                    f"MAX_POSITIONS REACHED ({live_count}/{max_positions})",
+                    self.Colors.YELLOW,
+                )
             self.entry_block_reasons["MAX_POSITIONS"] += 1
             return "NONE", "NONE", None
 
-        state_buy = {
-            "timeframe": getattr(self, "timeframe", "M5"),
-            "drift": 0.0,
-            "last_trend": getattr(self, "last_trend", "NONE"),
-            "seconds_into_candle": seconds_into_candle,
-        }
-        state_sell = {
-            "timeframe": getattr(self, "timeframe", "M5"),
-            "drift": 0.0,
-            "last_trend": getattr(self, "last_trend", "NONE"),
-            "seconds_into_candle": seconds_into_candle,
-        }
+        # --- EVALUATE STRATEGY SCORES ---
+        buy_score = self.strategy.calculate_momentum_score("BUY", tick, analysis, {})
+        sell_score = self.strategy.calculate_momentum_score("SELL", tick, analysis, {})
 
-        buy_score = self.strategy.calculate_momentum_score(
-            "BUY", tick, analysis, state_buy
-        )
-        sell_score = self.strategy.calculate_momentum_score(
-            "SELL", tick, analysis, state_sell
-        )
-
+        # Update analysis logs for DB/Dashboard visibility
         analysis["buy_score_total"] = buy_score.total
         analysis["sell_score_total"] = sell_score.total
 
-        if getattr(self, "db", None):
-            for d_str, s_obj in [("BUY", buy_score), ("SELL", sell_score)]:
-                if s_obj.total >= 60.0:
+        # Log rejects to the DB (sampled to prevent excessive logging)
+        for direction, s_obj in [("BUY", buy_score), ("SELL", sell_score)]:
+            if s_obj.block_reason:
+                # Log to DB if this is a fresh setup or loop_count is high
+                if self.loop_count % 40 == 0:
                     setup_log = {
                         "candle_time": str(analysis.get("time", "")),
-                        "direction": d_str,
+                        "direction": direction,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                         "score_momentum": s_obj.momentum,
                         "score_trend": s_obj.trend,
@@ -212,82 +197,39 @@ class EntryMixin:
         if live_count >= max_allowed_sell and not sell_score.block_reason:
             sell_score.block_reason = "MAX_POSITIONS"
 
-        buy_conditions_met = sell_conditions_met = False
-        
-        _entry_type = "PULLBACK"
-        _confirm_req = getattr(config, "ENTRY_CONFIRM_TICKS", 2)
-        
-        if not buy_score.block_reason:
+        buy_conditions_met = False
+        if buy_score and not buy_score.block_reason:
             buy_conditions_met = True
-        else:
+        elif buy_score and buy_score.block_reason:
             self.entry_block_reasons[buy_score.block_reason] = (
                 self.entry_block_reasons.get(buy_score.block_reason, 0) + 1
             )
 
-        if not sell_score.block_reason:
+        sell_conditions_met = False
+        if sell_score and not sell_score.block_reason:
             sell_conditions_met = True
-        else:
+        elif sell_score and sell_score.block_reason:
             if sell_score.block_reason == "FAKE_SPIKE_AVG_VEL":
-                self.log(
-                    f"FAKE_SPIKE_AVG_VEL (avg={analysis.get('avg_velocity', 0.0):+.2f})",
-                    self.Colors.ORANGE,
-                )
+                pass
             self.entry_block_reasons[sell_score.block_reason] = (
                 self.entry_block_reasons.get(sell_score.block_reason, 0) + 1
             )
 
-        buy_trigger = sell_trigger = False
+        _entry_type = "PULLBACK"
+        _confirm_req = self.strategy.get_setting("ENTRY_CONFIRM_TICKS", 2)
 
-        # --- TICK CONFIRMATION ---
-        # Require multiple consecutive ticks (getattr(config, "ENTRY_CONFIRM_TICKS", 3)) where all conditions remain true.
-        if buy_conditions_met:
-            self.buy_confirm_count += 1
-            if self.buy_confirm_count >= _confirm_req:
-                buy_trigger = True
-                self.log(
-                    f"BUY CONFIRMED ({self.buy_confirm_count} ticks)",
-                    self.Colors.GREEN,
-                )
-            else:
-                self.log(
-                    f"BUY Confirming... (Tick {self.buy_confirm_count}/{_confirm_req} @ {tick.ask:.2f})",
-                    self.Colors.YELLOW,
-                )
-        else:
-            if self.buy_confirm_count:
-                self.log(f"BUY CONFIRM_RESET — setup lost", self.Colors.ORANGE)
-            self.buy_confirm_count = 0
+        # Determine final signal
+        buy_trigger = buy_conditions_met
+        sell_trigger = sell_conditions_met
 
-        if sell_conditions_met:
-            self.sell_confirm_count += 1
-            if self.sell_confirm_count >= _confirm_req:
-                sell_trigger = True
-                self.log(
-                    f"SELL CONFIRMED ({self.sell_confirm_count} ticks)",
-                    self.Colors.MAGENTA,
-                )
-            else:
-                self.log(
-                    f"SELL Confirming... (Tick {self.sell_confirm_count}/{_confirm_req} @ {tick.bid:.2f})",
-                    self.Colors.YELLOW,
-                )
-        else:
-            if self.sell_confirm_count:
-                self.log(f"SELL CONFIRM_RESET — setup lost", self.Colors.ORANGE)
-            self.sell_confirm_count = 0
-
-        # --- RE-ENTRY POSITION GUARD (HISTORY) ---
-        # Removed to allow entries during healthy micro-pullbacks.
-        pass
-
+        # Log details on success triggers
         if buy_trigger or sell_trigger:
             signal = "BUY" if buy_trigger else "SELL"
             avg_velocity = analysis.get("avg_velocity")
             avg_str = f"{avg_velocity:+.2f}" if avg_velocity is not None else "N/A"
-            color = self.Colors.GREEN if buy_trigger else self.Colors.MAGENTA
             self.log(
                 f"[TRIGGER] {signal} ({_entry_type}) | Body: {analysis.get('prev_body', 0.0):.2f}→{abs(tick.bid - (analysis.get('open') or tick.bid)):.2f} | Vel:{analysis.get('velocity', 0.0):+.2f} | Avg:{avg_str}",
-                color,
+                self.Colors.CYAN,
             )
             if buy_trigger:
                 self.buy_confirm_count = 0
@@ -324,7 +266,7 @@ class EntryMixin:
             live_positions = mt5.positions_get(symbol=self.symbol)
             live_count = len(live_positions) if live_positions else 0
 
-            max_allowed = getattr(config, "MAX_SIMULTANEOUS_POSITIONS", 1)
+            max_allowed = self.strategy.get_setting("MAX_SIMULTANEOUS_POSITIONS", 1)
 
             if live_count >= max_allowed:
                 self.log(
@@ -335,16 +277,28 @@ class EntryMixin:
 
             entry_price = tick.ask if signal == "BUY" else tick.bid
 
-            volume = getattr(config, "LOT_SIZE", 1.0)
-            self.log(f"Lot Size: {volume:.2f}", self.Colors.CYAN)
+            _ema_9 = analysis.get("ema_9")
+            _ema_21 = analysis.get("ema_21")
+            is_pullback = False
+            if _ema_9 is not None and _ema_21 is not None:
+                if signal == "BUY" and _ema_9 <= _ema_21:
+                    is_pullback = True
+                elif signal == "SELL" and _ema_9 >= _ema_21:
+                    is_pullback = True
+
+            base_volume = self.strategy.get_setting("LOT_SIZE", 0.10)
+            volume = self.normalize_volume(symbol_info, base_volume)
+            self.log(f"Lot Size (Standard): {volume:.2f}", self.Colors.CYAN)
 
             order_type = mt5.ORDER_TYPE_BUY if signal == "BUY" else mt5.ORDER_TYPE_SELL
 
+            # Double check spread allowance
+            max_spread = self.strategy.get_setting("SPREAD_ALLOWANCE", 0.20)
             if hasattr(tick, "ask") and hasattr(tick, "bid"):
                 spread = round(tick.ask - tick.bid, 5)
-                if spread > getattr(config, "SPREAD_ALLOWANCE", 0.20):
+                if spread > max_spread:
                     self.log(
-                        f"WIDE SPREAD ({spread:.2f}) — skipping entry",
+                        f"WIDE SPREAD ({spread:.2f} > {max_spread:.2f}) — skipping entry",
                         self.Colors.ORANGE,
                     )
                     return False
@@ -377,19 +331,22 @@ class EntryMixin:
             _base_tp_ult = cfg_tp_ult
             _base_sl_cap = cfg_hard_sl
 
-            if getattr(config, "ENABLE_DYNAMIC_SL_TP", False):
+            enable_dynamic_sl_tp = self.strategy.get_setting("ENABLE_DYNAMIC_SL_TP", False)
+            if enable_dynamic_sl_tp:
                 atr_50 = analysis.get("atr_50", 2.50)
                 if atr_50 > 0:
+                    tp_base_mult = self.strategy.get_setting("DYNAMIC_TP_BASE_MULTIPLIER", 2.0)
                     _base_tp_mod = max(
                         cfg_tp_mod,
-                        atr_50 * getattr(config, "DYNAMIC_TP_BASE_MULTIPLIER", 2.0),
+                        atr_50 * tp_base_mult,
                     )
                     _base_tp_str = max(cfg_tp_str, _base_tp_mod * 1.5)
                     _base_tp_ult = max(cfg_tp_ult, _base_tp_mod * 2.0)
 
-                    calc_sl = atr_50 * getattr(config, "DYNAMIC_SL_ATR_MULTIPLIER", 1.5)
-                    min_sl = getattr(config, "MIN_DYNAMIC_SL", 2.00)
-                    max_sl = getattr(config, "MAX_DYNAMIC_SL", 8.00)
+                    sl_atr_mult = self.strategy.get_setting("DYNAMIC_SL_ATR_MULTIPLIER", 1.5)
+                    calc_sl = atr_50 * sl_atr_mult
+                    min_sl = self.strategy.get_setting("MIN_DYNAMIC_SL", 2.00)
+                    max_sl = self.strategy.get_setting("MAX_DYNAMIC_SL", 8.00)
                     _base_sl_cap = max(min_sl, min(calc_sl, max_sl))
 
             entry_type = entry_type or analysis.get("last_entry_type", "")
@@ -426,9 +383,8 @@ class EntryMixin:
                 "GREEN" if live_body > 0 else "RED" if live_body < 0 else "UNKNOWN"
             )
 
-
-
-            risk_pts = min(_base_sl_cap, round(dynamic_tp * getattr(config, "MAX_RISK_TO_TP_RATIO", 2.0), 2))
+            max_risk_ratio = self.strategy.get_setting("MAX_RISK_TO_TP_RATIO", 2.0)
+            risk_pts = round(dynamic_tp * max_risk_ratio, 2)
             hard_sl = round(
                 round(
                     (
@@ -457,15 +413,20 @@ class EntryMixin:
             # ── BROKER STOPS-LEVEL ENFORCEMENT ──
             # Broker requires SL & TP to be at least (trade_stops_level * point) away
             # from entry. If our calculated values are too close, clamp them outward.
-            # Winprofx XAUUSD: stops_level=50, point=0.01 → min dist = 0.50 pts
             min_dist = round(
                 (symbol_info.trade_stops_level * symbol_info.point)
                 + (symbol_info.point * 2),
                 symbol_info.digits,
             )  # +2 pts buffer on top of minimum to avoid edge rejections
             if signal == "BUY":
-                sl_limit = round(entry_price - min_dist, symbol_info.digits)
-                tp_limit = round(entry_price + min_dist, symbol_info.digits)
+                sl_limit = round(
+                    round((entry_price - min_dist) / tick_size) * tick_size,
+                    symbol_info.digits,
+                )
+                tp_limit = round(
+                    round((entry_price + min_dist) / tick_size) * tick_size,
+                    symbol_info.digits,
+                )
                 if hard_sl > sl_limit:  # SL too close above limit → push down
                     self.log(
                         f"⚠️ SL {hard_sl:.2f} too close — clamped to broker min {sl_limit:.2f} (dist:{min_dist:.2f})",
@@ -479,8 +440,14 @@ class EntryMixin:
                     )
                     broker_tp = tp_limit
             else:  # SELL
-                sl_limit = round(entry_price + min_dist, symbol_info.digits)
-                tp_limit = round(entry_price - min_dist, symbol_info.digits)
+                sl_limit = round(
+                    round((entry_price + min_dist) / tick_size) * tick_size,
+                    symbol_info.digits,
+                )
+                tp_limit = round(
+                    round((entry_price - min_dist) / tick_size) * tick_size,
+                    symbol_info.digits,
+                )
                 if hard_sl < sl_limit:  # SL too close below limit → push up
                     self.log(
                         f"⚠️ SL {hard_sl:.2f} too close — clamped to broker min {sl_limit:.2f} (dist:{min_dist:.2f})",
@@ -499,6 +466,8 @@ class EntryMixin:
                 self.Colors.CYAN,
             )
 
+            max_slippage = self.strategy.get_setting("MAX_ENTRY_SLIPPAGE", 0.20)
+            comment_str = f"{signal}_Pullback" if is_pullback else f"{signal}_HardSL"
             request = {
                 "action": mt5.TRADE_ACTION_DEAL,
                 "symbol": self.symbol,
@@ -508,8 +477,8 @@ class EntryMixin:
                 "sl": hard_sl,
                 "tp": broker_tp,
                 "magic": 123456,
-                "deviation": int(getattr(config, "MAX_ENTRY_SLIPPAGE", 0.20) / symbol_info.point),
-                "comment": f"{signal}_HardSL",
+                "deviation": int(max_slippage / symbol_info.point),
+                "comment": comment_str,
                 "type_time": mt5.ORDER_TIME_GTC,
                 "type_filling": type_filling,
             }
@@ -542,6 +511,7 @@ class EntryMixin:
                 self.trades_this_candle += 1
 
                 if getattr(self, "db", None) and score:
+                    strat_ver = self.strategy.get_setting("STRATEGY_VERSION", "unknown")
                     setup_log = {
                         "candle_time": str(analysis.get("time", "")),
                         "direction": signal,
@@ -557,15 +527,13 @@ class EntryMixin:
                         "ticket": result.order,
                         "instant_velocity": analysis.get("velocity", 0.0),
                         "velocity_2s": analysis.get("velocity_2s", 0.0),
-                        "strategy_version": getattr(
-                            config, "STRATEGY_VERSION", "unknown"
-                        ),
+                        "strategy_version": strat_ver,
                     }
                     self.db.log_evaluated_setup(setup_log)
 
                 if result.price:
                     fill_slippage = abs(result.price - entry_price)
-                    if fill_slippage >= getattr(config, "MAX_ENTRY_SLIPPAGE", 0.20):
+                    if fill_slippage >= max_slippage:
                         self.log(
                             f"⚠️ HIGH SLIPPAGE {fill_slippage:+.2f} — allowing trade to run",
                             self.Colors.ORANGE,
@@ -616,6 +584,7 @@ class EntryMixin:
                     "trail_sl_price": None,
                     "hard_sl_price": hard_sl,
                     "entry_type": entry_type,
+                    "is_pullback": is_pullback,
                     "score_momentum": score.momentum if score else 0.0,
                     "score_trend": score.trend if score else 0.0,
                     "score_candle": score.candle if score else 0.0,
@@ -767,7 +736,13 @@ class EntryMixin:
     def execute_scale_in(
         self, parent_pos, parent_data, tick, current_live_count, analysis
     ):
-        scale_vol = getattr(config, "LOT_SIZE", 0.10)
+        symbol_info = mt5.symbol_info(self.symbol)
+        if not symbol_info:
+            self.log("Failed to get symbol info for scale-in", self.Colors.RED)
+            return False
+
+        scale_vol = self.strategy.get_setting("LOT_SIZE", 0.10)
+        scale_vol = self.normalize_volume(symbol_info, scale_vol)
         parent_vol = round(parent_pos.volume, 2)
         signal = "BUY" if parent_pos.type == mt5.ORDER_TYPE_BUY else "SELL"
 
@@ -782,8 +757,6 @@ class EntryMixin:
 
         order_type = mt5.ORDER_TYPE_BUY if signal == "BUY" else mt5.ORDER_TYPE_SELL
         entry_price = tick.ask if signal == "BUY" else tick.bid
-
-        symbol_info = mt5.symbol_info(self.symbol)
         filling_mode = symbol_info.filling_mode
         if filling_mode & 1:
             type_filling = 0

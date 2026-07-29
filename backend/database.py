@@ -9,15 +9,17 @@ import time
 
 class TradeDatabase:
     """
-    Handles the local SQLite storage of all completed trades.
+    Handles the local SQLite storage of all completed trades and setup evaluations.
     This allows for rapid statistical analysis (win rate, P&L, etc.) without relying solely on MT5 history.
     """
 
+    # ── SECTION 1: INITIALIZATION & STATE SETUP ──
     def __init__(self, db_name="trade_journal.db"):
         self.db_name = os.path.join(os.path.dirname(os.path.abspath(__file__)), db_name)
         self.write_queue = queue.Queue()
         self.init_db()
 
+        # Dedicated worker thread for non-blocking database writes
         self.worker_thread = threading.Thread(
             target=self._bg_writer_worker, daemon=True
         )
@@ -31,6 +33,7 @@ class TradeDatabase:
         conn.execute("PRAGMA synchronous=NORMAL;")
         return conn
 
+    # ── SECTION 2: DATABASE INITIALIZATION (TABLES & COLUMNS MIGRATIONS) ──
     def init_db(self):
         """Create the SQLite database and table if they do not exist"""
         try:
@@ -138,6 +141,7 @@ class TradeDatabase:
         except Exception as e:
             print(f"[ERROR] SQLite Initialization Error: {e}")
 
+    # ── SECTION 3: DATA LOGGING & BACKGROUND WRITING METHODS ──
     def log_evaluated_setup(self, setup_data):
         setup_data["_type"] = "evaluated_setup"
         self.write_queue.put(setup_data)
@@ -228,7 +232,7 @@ class TradeDatabase:
                                     velocity_consistency, velocity_acceleration, score_acceleration, velocity_std, velocity_mean, mfe, mae, strategy_version, duration_seconds,
                                     adx_14, sideways_score, timeframe
                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
+                                """,
                                     (
                                         ticket_val,
                                         data["entry_time"],
@@ -302,6 +306,7 @@ class TradeDatabase:
         except Exception as e:
             pass  # Silent fail to prevent log spam
 
+    # ── SECTION 4: STATISTICAL QUERIES (METRICS COMPILING) ──
     def get_stats(self, date_filter=None, limit=None):
         """
         Query the database to calculate statistics:
@@ -446,6 +451,7 @@ class TradeDatabase:
             print(f"[ERROR] SQLite Error: Failed to calculate statistics: {e}")
             return None
 
+    # ── SECTION 5: HISTORICAL IMPORT (CSV MIGRATION) ──
     def auto_import_from_csv(self, csv_path):
         """Automatically import existing trades from CSV if database is empty"""
         resolved_csv_path = os.path.join(

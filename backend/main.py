@@ -16,12 +16,6 @@ from entry import EntryMixin
 from exit import ExitMixin
 from news import NewsFilter
 import config
-from config import (
-    MAX_SIMULTANEOUS_POSITIONS,
-    MAX_LOSSES_PER_CANDLE,
-    MAX_CONSEC_LOSSES,
-    LOSS_PAUSE_CANDLES,
-)
 
 if sys.platform == "win32":
     try:
@@ -77,7 +71,7 @@ class TradingBot(EntryMixin, ExitMixin):
         self._symbol_info_startup = symbol_info
         self._account_info_startup = account_info
 
-        self.max_simultaneous = MAX_SIMULTANEOUS_POSITIONS
+        self.max_simultaneous = self.strategy.get_setting("MAX_SIMULTANEOUS_POSITIONS", 1)
         tf_settings = getattr(config, "TIMEFRAME_SETTINGS", {}).get(
             self.timeframe, getattr(config, "TIMEFRAME_SETTINGS", {}).get("M5", {})
         )
@@ -91,11 +85,7 @@ class TradingBot(EntryMixin, ExitMixin):
         self._last_display_time = 0.0
         self.journal_file = "trade_journal.csv"
         self.total_trades_today = 0
-        self.scaled_in_tickets = (
-            set()
-        )  # Track which positions have already been scaled in
-
-
+        self.scaled_in_tickets = set()  # Track which positions have already been scaled in
 
         from database import TradeDatabase
 
@@ -346,7 +336,8 @@ class TradingBot(EntryMixin, ExitMixin):
             "initial_sl": pos_sl if pos_sl > 0 else None,
             "initial_tp": pos_tp if pos_tp > 0 else None,
             "initial_tp_pts": initial_tp_pts,
-            "is_manual": True,
+            "is_manual": pos.magic not in [123456, 234000],
+            "is_pullback": "Pullback" in getattr(pos, "comment", ""),
         }
 
         self.position_data[ticket] = unified_pos_data
@@ -376,7 +367,8 @@ class TradingBot(EntryMixin, ExitMixin):
             point=si.point if si else 0.01,
         )
 
-        if self.news_filter and getattr(config, "ENABLE_NEWS_FILTER", False):
+        enable_news_filter = self.strategy.get_setting("ENABLE_NEWS_FILTER", True)
+        if self.news_filter and enable_news_filter:
             self.formatter.print_news_calendar(self.news_filter.events)
 
         db_stats = self.db.get_stats(date_filter="today")
@@ -422,7 +414,7 @@ class TradingBot(EntryMixin, ExitMixin):
                         else:
                             self.last_trend = "NONE"
                     else:
-                        self.last_trend = "NONE"
+                         self.last_trend = "NONE"
 
                 self.loop_count += 1
 
@@ -490,9 +482,7 @@ class TradingBot(EntryMixin, ExitMixin):
                             
                     self.entry_block_reasons.clear()
 
-                    if self.news_filter and getattr(
-                        config, "ENABLE_NEWS_FILTER", False
-                    ):
+                    if self.news_filter and enable_news_filter:
                         if _now - self.last_news_print_time >= 3600:
                             self.formatter.print_news_calendar(self.news_filter.events)
                             self.last_news_print_time = _now
@@ -512,6 +502,7 @@ class TradingBot(EntryMixin, ExitMixin):
                     self.last_entry_dir = None
                     self.last_exit_price = None
                     self.last_exit_result = None
+
                 current_positions_raw = mt5.positions_get(symbol=self.symbol)
                 if current_positions_raw is None:
                     err = mt5.last_error()
@@ -646,6 +637,7 @@ class TradingBot(EntryMixin, ExitMixin):
                         }
                         self._last_exit_time = time.time()
 
+                        strat_ver = self.strategy.get_setting("STRATEGY_VERSION", "unknown")
                         journal_data = {
                             "ticket": ticket,
                             "entry_time": pos_data.get(
@@ -654,7 +646,6 @@ class TradingBot(EntryMixin, ExitMixin):
                             "exit_time": datetime.now(timezone.utc).strftime(
                                 "%Y-%m-%d %H:%M:%S"
                             ),
-                            "ticket": ticket,
                             "direction": direction,
                             "entry_price": entry_price,
                             "exit_price": exit_price,
@@ -690,9 +681,7 @@ class TradingBot(EntryMixin, ExitMixin):
                             "velocity_mean": pos_data.get("velocity_mean", 0.0),
                             "mfe": pos_data.get("mfe", 0.0),
                             "mae": pos_data.get("mae", 0.0),
-                            "strategy_version": getattr(
-                                config, "STRATEGY_VERSION", "unknown"
-                            ),
+                            "strategy_version": strat_ver,
                             "duration_seconds": duration_seconds,
                             "adx_14": pos_data.get("adx_14", 0.0),
                             "sideways_score": pos_data.get("sideways_score", 0),
@@ -725,7 +714,7 @@ class TradingBot(EntryMixin, ExitMixin):
                             today_profit,
                             exit_condition,
                             trade_profit=profit_dollars,
-                        v_entry=v_entry,
+                            v_entry=v_entry,
                             tp_target=tp_target,
                             peak=peak,
                         )
@@ -745,14 +734,19 @@ class TradingBot(EntryMixin, ExitMixin):
                         elif profit_points < -0.01:
                             self.losses_this_candle += 1
                             self.consec_losses += 1
+                            
+                            max_losses_candle = self.strategy.get_setting("MAX_LOSSES_PER_CANDLE", 2)
+                            max_consec_losses = self.strategy.get_setting("MAX_CONSEC_LOSSES", 99999)
+                            loss_pause_candles = self.strategy.get_setting("LOSS_PAUSE_CANDLES", 0)
+                            
                             self.log(
-                                f"LOSS #{self.losses_this_candle}/{MAX_LOSSES_PER_CANDLE} this candle | Consec: {self.consec_losses}/{MAX_CONSEC_LOSSES}",
+                                f"LOSS #{self.losses_this_candle}/{max_losses_candle} this candle | Consec: {self.consec_losses}/{max_consec_losses}",
                                 Colors.ORANGE,
                             )
-                            if self.consec_losses >= MAX_CONSEC_LOSSES:
-                                self.candles_to_pause = max(getattr(self, "candles_to_pause", 0), LOSS_PAUSE_CANDLES)
+                            if self.consec_losses >= max_consec_losses:
+                                self.candles_to_pause = max(getattr(self, "candles_to_pause", 0), loss_pause_candles)
                                 self.log(
-                                    f"🚨 CONSEC_LOSS_LIMIT HIT ({self.consec_losses}) — pausing entries for {LOSS_PAUSE_CANDLES} candles",
+                                    f"🚨 CONSEC_LOSS_LIMIT HIT ({self.consec_losses}) — pausing entries for {loss_pause_candles} candles",
                                     Colors.RED,
                                 )
                             self.last_exit_price = exit_price
@@ -767,14 +761,12 @@ class TradingBot(EntryMixin, ExitMixin):
                     # Refresh after exit checks — a position may have just been closed
                     current_positions = mt5.positions_get(symbol=self.symbol) or ()
 
-
-
                 # Check for News Block (but allow exits)
                 is_news_blocked, news_title = self.news_filter.is_news_block_active()
 
                 # Allow entry even with open positions (up to MAX_SIMULTANEOUS_POSITIONS)
                 # but enforce a 2-second gap after the last entry, and require price
-                # to have moved at least 0.30 pts favorably past the last entry price
+                # to have moved at least 0.10 pts favorably past the last entry price
                 ticks_since_last_entry = self.loop_count - self.last_entry_tick
                 time_since_last_entry = time.time() - self.last_entry_time
                 price_moved_ok = True
@@ -784,10 +776,8 @@ class TradingBot(EntryMixin, ExitMixin):
                     else:
                         price_moved_ok = tick.bid <= self.last_entry_price + 0.10
 
-                # --- POST-EXIT / PREV TRADE PRICE GUARDS ---
-                # REMOVED: Sequential price guards forced the bot to buy at worse prices after a stop-out.
-                # We now rely purely on MAX_LOSSES_PER_CANDLE and time/candle momentum rules.
                 re_entry_ok = True
+                max_losses_candle = self.strategy.get_setting("MAX_LOSSES_PER_CANDLE", 2)
 
                 if (
                     len(current_positions) < self.max_simultaneous
@@ -795,9 +785,10 @@ class TradingBot(EntryMixin, ExitMixin):
                     and time_since_last_entry >= 0.5
                     and price_moved_ok
                     and re_entry_ok
-                    and self.losses_this_candle < MAX_LOSSES_PER_CANDLE
+                    and self.losses_this_candle < max_losses_candle
                 ):
-                    if is_news_blocked and getattr(config, "BLOCK_TRADES_ON_NEWS", True):
+                    block_on_news = self.strategy.get_setting("BLOCK_TRADES_ON_NEWS", False)
+                    if is_news_blocked and block_on_news:
                         if self.loop_count % 15 == 0:
                             self.log(
                                 f"NEWS BLOCK ACTIVE: {news_title} (Entries Paused)",
@@ -808,17 +799,16 @@ class TradingBot(EntryMixin, ExitMixin):
                         # Block NEW entries outside configured session window.
                         # Exits on open positions are always allowed regardless of session.
                         _can_enter = True
+                        enable_session_filter = self.strategy.get_setting("ENABLE_SESSION_FILTER", False)
                         if (
-                            getattr(config, "ENABLE_SESSION_FILTER", False)
+                            enable_session_filter
                             and not current_positions
                         ):
                             _utc_hour = datetime.now(timezone.utc).hour
-                            _sess_start = getattr(config, "SESSION_START_HOUR_UTC", 7)
-                            _sess_end = getattr(config, "SESSION_END_HOUR_UTC", 21)
+                            _sess_start = self.strategy.get_setting("SESSION_START_HOUR_UTC", 3)
+                            _sess_end = self.strategy.get_setting("SESSION_END_HOUR_UTC", 18)
 
-                            max_allowed = getattr(
-                                config, "MAX_SIMULTANEOUS_POSITIONS", 2
-                            )
+                            max_allowed = self.strategy.get_setting("MAX_SIMULTANEOUS_POSITIONS", 1)
                             if (
                                 len(current_positions) if current_positions else 0
                             ) >= max_allowed:
