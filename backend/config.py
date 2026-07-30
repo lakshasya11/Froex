@@ -14,7 +14,7 @@ LOT_SIZE = 0.10  # Fixed lot size for all trades
 MAX_SIMULTANEOUS_POSITIONS = 1  # Maximum number of simultaneous trades allowed
 MAX_LOSSES_PER_CANDLE = 99999  # Stop trading on this candle if we hit 2 losses
 MAX_DAILY_TRADES = 500  # Max 500 trades per calendar day
-DAILY_PROFIT_TARGET = 350.0  # Stop trading if daily net profit reaches or exceeds this amount
+DAILY_PROFIT_TARGET = 500.0  # Stop trading if daily net profit reaches or exceeds this amount
 MAX_CONSEC_LOSSES = 99999  # 100 disables the consecutive loss pause
 LOSS_PAUSE_CANDLES = 0  # Pause trading for N candles after hitting the consecutive loss limit
 
@@ -22,8 +22,16 @@ LOSS_PAUSE_CANDLES = 0  # Pause trading for N candles after hitting the consecut
 # 2. RISK MANAGEMENT & EXECUTION
 # =============================================================================
 MAX_RISK_TO_TP_RATIO = 1.0  # Maximum allowed ratio between Stop Loss risk and Take Profit reward
-SPREAD_ALLOWANCE = 0.20  # Maximum acceptable spread in points
+SPREAD_ALLOWANCE = 0.40  # Maximum acceptable spread in points
 MAX_ENTRY_SLIPPAGE = 0.10  # Cancel the trade if slippage exceeds 0.10 points
+
+# =============================================================================
+# 2.5 OPERATIONAL GUARDS
+# =============================================================================
+RE_ENTRY_DISTANCE = 0.50            # Minimum distance (points) away from last loss entry price to allow a new trade
+EXECUTION_COOLDOWN_SECS = 2.0       # Number of seconds to block entry analysis after a trade fires/closes
+CANDLE_START_BLOCK_SECS = 5         # Block entries during the first N seconds of a new candle
+CANDLE_END_BLOCK_SECS = 10          # Block entries during the last N seconds of a candle
 
 
 # =============================================================================
@@ -36,8 +44,9 @@ EMA21_ANGLE_THRESHOLD = 4.0  # Minimum EMA 21 angle required for baseline trend
 
 # Candle Structure Guards
 MIN_BODY_SIZE = 0.10         # Lower body size threshold for candles
-MIN_CANDLE_RANGE = 0.10      # Minimum overall candle range (High - Low) required
-CANDLE_RANGE_ATR_MULT = 0.30 # Candle range must also be at least this fraction of ATR
+BASE_WICK_TOLERANCE = 2.50   # Minimum allowed distance to the high/low before blocking entry
+WICK_ATR_MULT = 0.20         # Distance to high/low is also bounded by this fraction of ATR
+SELL_WICK_MULT = 1.25        # Multiplier applied to wick tolerance specifically for SELL entries
 
 # =============================================================================
 # 4. VELOCITY / MOMENTUM FILTERS
@@ -61,7 +70,9 @@ SESSION_START_HOUR_UTC = 3  # 03:00 UTC = ~09:00 AM IST (Start of trading sessio
 SESSION_END_HOUR_UTC = 18  # 18:00 UTC = ~11:30 PM IST (End of trading session)
 
 ENABLE_NEWS_FILTER = True
-BLOCK_TRADES_ON_NEWS = False
+BLOCK_TRADES_ON_NEWS = True
+NEWS_BLOCK_PRE_MINUTES = 5
+NEWS_BLOCK_POST_MINUTES = 10
 
 # =============================================================================
 # 7. MULTI-TIMEFRAME ALIGNMENT
@@ -97,7 +108,7 @@ TIMEFRAME_SETTINGS = {
         "TRAIL_TRIGGER_PTS": 1.80,
         "TRAIL_GAP_PTS": 0.80,
         "PROFIT_LOCK_STEPS": [
-            (1.20, 0.50),
+            (1.00, 0.50),
         ],
     },
     "M15": {

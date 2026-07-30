@@ -164,6 +164,15 @@ class TradingBot(EntryMixin, ExitMixin):
         timestamp = datetime.now().strftime("%H:%M:%S")
         msg = f"[{timestamp}] {color}{message}{Colors.RESET}"
         print(msg)
+        try:
+            with open("debug.log", "a", encoding="utf-8") as f:
+                # Strip ANSI colors for file logging
+                import re
+                ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+                clean_msg = ansi_escape.sub('', f"[{timestamp}] {message}")
+                f.write(clean_msg + "\n")
+        except Exception:
+            pass
 
     def get_market_data(self):
         """
@@ -396,25 +405,22 @@ class TradingBot(EntryMixin, ExitMixin):
                     time.sleep(1)
                     continue
 
-                if analysis.get("is_higher"):
+                _ema9 = analysis.get("ema_9")
+                _prev_color = analysis.get("prev_color", "UNKNOWN")
+
+                _curr_color = analysis.get("candle_color", "UNKNOWN")
+
+                if _prev_color == "GREEN" and _curr_color == "GREEN":
                     self.last_trend = "UP"
-                elif analysis.get("is_lower"):
+                elif _prev_color == "RED" and _curr_color == "RED":
                     self.last_trend = "DOWN"
                 else:
-                    # Fallback: if price is inside the previous body (consolidating),
-                    # use EMA 9 vs EMA 21 alignment to keep the trend label alive.
-                    # This prevents a single pullback candle from triggering SIDEWAY_TREND.
-                    _ema9 = analysis.get("ema_9")
-                    _ema21 = analysis.get("ema_21")
-                    if _ema9 is not None and _ema21 is not None:
-                        if _ema9 > _ema21:
-                            self.last_trend = "UP"
-                        elif _ema9 < _ema21:
-                            self.last_trend = "DOWN"
-                        else:
-                            self.last_trend = "NONE"
+                    _curr_body = analysis.get("current_body_size", 0.0)
+                    _prev_body = analysis.get("prev_body", 0.0)
+                    if _curr_body > _prev_body:
+                        self.last_trend = "UP" if _curr_color == "GREEN" else ("DOWN" if _curr_color == "RED" else "NONE")
                     else:
-                         self.last_trend = "NONE"
+                        self.last_trend = "NONE"
 
                 self.loop_count += 1
 

@@ -554,8 +554,6 @@ class TerminalFormatter:
                 status = f"{Colors.YELLOW}TIME WINDOW CLOSED ({max(0, tf_secs - seconds_into_candle)}s){Colors.RESET}"
             elif bot.trades_this_candle >= bot.max_trades_candle:
                 status = f"{Colors.YELLOW}TRADE DONE THIS CANDLE ({bot.trades_this_candle}/{bot.max_trades_candle}){Colors.RESET}"
-            elif is_mixed:
-                status = ""
             elif curr_candle == "GREEN":
                 _vel_ok = abs(vsm) >= entry_vel_fresh
                 _avg_ok = avg_v_raw is not None and abs(avg_v_raw) >= entry_avg_fresh
@@ -629,7 +627,19 @@ class TerminalFormatter:
             gap_display = f"{DIM}GAP:{T}{gap_color}{Colors.BOLD}{ema_gap:.2f}{T}"
         else:
             gap_display = f"{DIM}GAP:{T}{Colors.YELLOW}N/A{T}"
-        velocity_display = f"{DIM}V{T}:{v_color}{vsm:+.2f}{T} {DIM}A{T}:{avg_v_str}"
+            
+        if curr_candle == "GREEN":
+            _score_obj = bot.strategy.calculate_momentum_score("BUY", tick, analysis, {})
+            _sc = _score_obj.total
+            sc_display = f"  SC:{_sc:.0f}"
+        elif curr_candle == "RED":
+            _score_obj = bot.strategy.calculate_momentum_score("SELL", tick, analysis, {})
+            _sc = _score_obj.total
+            sc_display = f"  SC:{_sc:.0f}"
+        else:
+            sc_display = ""
+            
+        velocity_display = f"{DIM}V{T}:{v_color}{vsm:+.2f}{T} {DIM}A{T}:{avg_v_str}{sc_display}"
         trend_color = (
             Colors.GREEN
             if bot.last_trend == "UP"
@@ -640,10 +650,15 @@ class TerminalFormatter:
         ema_9_angle = analysis.get("ema_9_angle", 0.0) if analysis else 0.0
         ema_21_angle = analysis.get("ema_21_angle", 0.0) if analysis else 0.0
         
-        angle_9_color = Colors.GREEN if ema_9_angle >= 10 else Colors.RED if ema_9_angle <= -10 else Colors.YELLOW
-        angle_21_color = Colors.GREEN if ema_21_angle >= 5 else Colors.RED if ema_21_angle <= -5 else Colors.YELLOW
+        import config
+        tf_settings = getattr(config, "SYMBOL_TIMEFRAME_SETTINGS", {}).get(bot.symbol, {}).get(bot.timeframe, {})
+        ema9_thresh = tf_settings.get("EMA9_ANGLE_THRESHOLD", 8.0)
+        ema21_thresh = tf_settings.get("EMA21_ANGLE_THRESHOLD", 4.0)
+
+        angle_9_color = Colors.GREEN if ema_9_angle >= ema9_thresh else Colors.RED if ema_9_angle <= -ema9_thresh else Colors.YELLOW
+        angle_21_color = Colors.GREEN if ema_21_angle >= ema21_thresh else Colors.RED if ema_21_angle <= -ema21_thresh else Colors.YELLOW
         
-        indicators_display = f"{DIM}TR:{T}{trend_color}{display_trend:<4}{T} {DIM}EMA9∠:{T}{angle_9_color}{ema_9_angle:+.1f}°{T} {DIM}EMA21∠:{T}{angle_21_color}{ema_21_angle:+.1f}°{T}"
+        indicators_display = f"{DIM}TR:{T}{trend_color}{display_trend:<4}{T} {DIM}EMA9∠:{T}{angle_9_color}{ema_9_angle:+.2f}°{T} {DIM}EMA21∠:{T}{angle_21_color}{ema_21_angle:+.2f}°{T}"
 
         print(
             f"{time_display}  {tick_display}  {price_display}  {candle_display}  {sequence_display}  {gap_display}  {indicators_display}  {velocity_display}  {status}"

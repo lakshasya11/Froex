@@ -39,28 +39,58 @@ class EntryMixin:
         last_trade = getattr(self, "last_trade_history", None)
         if last_trade and last_trade.get("profit_points", 0) < 0:
             last_entry = last_trade.get("entry_price")
-            if last_entry is not None and abs(tick.bid - last_entry) < 0.50: # Must move at least 0.50 points away
-                return "NONE", "NONE", None
+            if last_entry is not None:
+                min_re_entry_dist = self.strategy.get_setting("RE_ENTRY_DISTANCE", 0.50)
+                if abs(tick.bid - last_entry) < min_re_entry_dist: # Must move away
+                    if getattr(self, "loop_count", 0) % 60 == 0:
+                        self.log(f"RE_ENTRY_GUARD: Price too close to last loss ({last_entry:.2f})", self.Colors.ORANGE)
+                    self.entry_block_reasons["RE_ENTRY_GUARD"] = self.entry_block_reasons.get("RE_ENTRY_GUARD", 0) + 1
+                    return "NONE", "NONE", None
 
         # --- BROKER SYNC COOLDOWN ---
         # Prevent analyzing new setups for 2 seconds after a trade fires.
         # This gives MT5 time to update positions_get(), preventing the engine from starting
         # a new confirmation loop for a trade that is already executing.
 
-        if time.time() - getattr(self, "_last_signal_time", 0) < 2.0:
+        cooldown_secs = self.strategy.get_setting("EXECUTION_COOLDOWN_SECS", 2.0)
+        if time.time() - getattr(self, "_last_signal_time", 0) < cooldown_secs:
             return "NONE", "NONE", None
             
-        if time.time() - getattr(self, "_last_exit_time", 0) < 2.0:
+        if time.time() - getattr(self, "_last_exit_time", 0) < cooldown_secs:
+            return "NONE", "NONE", None
+
+        # GUARD: First 5 seconds AND last N seconds of candle — no entries allowed on any timeframe
+        candle_open_time = analysis.get("time", 0)
+        seconds_into_candle = (int(tick.time) - int(candle_open_time)) if candle_open_time else 0
+        tf_duration_map = {"M1": 60, "M5": 300, "M15": 900, "M30": 1800}
+        tf_secs = tf_duration_map.get(getattr(self, "timeframe", "M5"), 300)
+        start_block_secs = self.strategy.get_setting("CANDLE_START_BLOCK_SECS", 5)
+        end_block_secs = self.strategy.get_setting("CANDLE_END_BLOCK_SECS", 5 if getattr(self, "timeframe", "M1") == "M1" else 10)
+        if seconds_into_candle < start_block_secs:
+            self.entry_block_reasons["CANDLE_ENTRY_START"] = self.entry_block_reasons.get("CANDLE_ENTRY_START", 0) + 1
+            return "NONE", "NONE", None
+        if seconds_into_candle > (tf_secs - end_block_secs):
+            self.entry_block_reasons["CANDLE_ENTRY_END"] = self.entry_block_reasons.get("CANDLE_ENTRY_END", 0) + 1
             return "NONE", "NONE", None
 
         # GUARD: Sideway Trend Block
         # Allow entry if last_trend is UP or DOWN, OR if two consecutive candles are aligned (RED+RED or GREEN+GREEN)
+        # NEW LOGIC: If colors are opposite, check if the current body engulfs (is larger than) the previous body.
         curr_color = analysis.get("candle_color", "UNKNOWN")
         prev_color = analysis.get("prev_color", "UNKNOWN")
         is_pullback_setup = (curr_color == "RED" and prev_color == "RED") or (curr_color == "GREEN" and prev_color == "GREEN")
 
-        if getattr(self, "last_trend", "NONE") == "NONE" and not is_pullback_setup:
-            self.entry_block_reasons["SIDEWAY_TREND"] += 1
+        is_engulfing_trend = False
+        if not is_pullback_setup:
+            curr_body = analysis.get("current_body_size", 0.0)
+            prev_body = analysis.get("prev_body", 0.0)
+            if curr_body > prev_body:
+                is_engulfing_trend = True
+
+        if getattr(self, "last_trend", "NONE") == "NONE" and not is_pullback_setup and not is_engulfing_trend:
+            if getattr(self, "loop_count", 0) % 60 == 0:
+                self.log("SIDEWAY_TREND_GUARD: Waiting for established trend", self.Colors.ORANGE)
+            self.entry_block_reasons["SIDEWAY_TREND"] = self.entry_block_reasons.get("SIDEWAY_TREND", 0) + 1
             return "NONE", "NONE", None
 
         # GUARD: Prevent over-trading by capping the total number of entries per single candle
@@ -233,10 +263,8 @@ class EntryMixin:
             )
             if buy_trigger:
                 self.buy_confirm_count = 0
-                self._last_signal_time = time.time()
             if sell_trigger:
                 self.sell_confirm_count = 0
-                self._last_signal_time = time.time()
             return signal, _entry_type, (buy_score if buy_trigger else sell_score)
 
         return "NONE", "NONE", None
@@ -383,8 +411,8 @@ class EntryMixin:
                 "GREEN" if live_body > 0 else "RED" if live_body < 0 else "UNKNOWN"
             )
 
-            max_risk_ratio = self.strategy.get_setting("MAX_RISK_TO_TP_RATIO", 2.0)
-            risk_pts = round(dynamic_tp * max_risk_ratio, 2)
+            # Use HARD_STOP_LOSS from config directly — fixed SL distance always
+            risk_pts = round(_base_sl_cap, 2)  # e.g. 2.00 pts for M5
             hard_sl = round(
                 round(
                     (
@@ -476,7 +504,7 @@ class EntryMixin:
                 "price": entry_price,
                 "sl": hard_sl,
                 "tp": broker_tp,
-                "magic": 123456,
+                "magic": getattr(self, "magic", 123456),
                 "deviation": int(max_slippage / symbol_info.point),
                 "comment": comment_str,
                 "type_time": mt5.ORDER_TIME_GTC,
@@ -603,6 +631,7 @@ class EntryMixin:
                     "sideways_score": score.sideways_score if score else 0,
                 }
                 self.position_data[actual_ticket] = unified_pos_data
+                self._last_signal_time = time.time()
                 return True
             else:
                 self.log(

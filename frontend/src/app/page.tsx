@@ -143,6 +143,14 @@ const ProgressBar = ({ entry, current, sl, tp, direction }: any) => {
   );
 };
 
+const ProfitEmoji = ({ profit, sizeClass }: { profit: number, sizeClass: string }) => {
+  if (profit >= 200) return <span className={`${sizeClass} flex items-center justify-center anim-excited drop-shadow-md`}>🤩</span>;
+  if (profit >= 100) return <span className={`${sizeClass} flex items-center justify-center anim-happy drop-shadow-md`}>😀</span>;
+  if (profit >= 10) return <span className={`${sizeClass} flex items-center justify-center anim-chill drop-shadow-sm`}>🙂</span>;
+  if (profit >= 0) return <span className={`${sizeClass} flex items-center justify-center drop-shadow-sm`}>🫠</span>;
+  return <span className={`${sizeClass} flex items-center justify-center anim-nervous drop-shadow-md`}>😰</span>;
+};
+
 export default function Home() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -233,7 +241,7 @@ export default function Home() {
   const currentStreak = React.useMemo(() => {
     if (!filteredTrades || filteredTrades.length === 0) return { type: 'NONE', count: 0 };
     // Sort by most recent first
-    const sorted = [...filteredTrades].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const sorted = [...filteredTrades].sort((a, b) => new Date(b.exit_time).getTime() - new Date(a.exit_time).getTime());
     let type = sorted[0].profit_dollars > 0 ? 'WIN' : 'LOSS';
     let count = 0;
     for (const trade of sorted) {
@@ -431,7 +439,7 @@ export default function Home() {
 
   useEffect(() => {
     fetchTrades();
-    const interval = setInterval(fetchTrades, 30000); // Poll every 30s to save CPU
+    const interval = setInterval(fetchTrades, 1000); // Poll every 1s for real-time updates
     return () => clearInterval(interval);
   }, [fetchTrades]);
 
@@ -460,6 +468,54 @@ export default function Home() {
     const interval = setInterval(fetchActiveTrade, 1000); // Poll active trade every 1s
     return () => clearInterval(interval);
   }, []);
+
+  // ── ADVANCED ANALYTICS useMemo hooks (must be before any early return) ──────
+
+  // Max Drawdown
+  const maxDrawdown = React.useMemo(() => {
+    let peak = 0; let maxDD = 0; let running = 0;
+    [...filteredTrades].reverse().forEach(t => {
+      running += t.profit_dollars;
+      if (running > peak) peak = running;
+      const dd = peak - running;
+      if (dd > maxDD) maxDD = dd;
+    });
+    return maxDD;
+  }, [filteredTrades]);
+
+  // Hourly heatmap data
+  const hourlyData = React.useMemo(() => {
+    const map: Record<number, { pnl: number; trades: number; wins: number }> = {};
+    filteredTrades.forEach(t => {
+      const utcDate = new Date(t.entry_time.replace(' ', 'T') + 'Z');
+      if (isNaN(utcDate.getTime())) return;
+      const istHour = new Date(utcDate.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })).getHours();
+      if (!map[istHour]) map[istHour] = { pnl: 0, trades: 0, wins: 0 };
+      map[istHour].pnl += t.profit_dollars;
+      map[istHour].trades += 1;
+      if (t.profit_dollars > 0) map[istHour].wins += 1;
+    });
+    return Array.from({ length: 24 }, (_, h) => ({
+      hour: `${h.toString().padStart(2, '0')}:00`,
+      pnl: map[h]?.pnl ?? 0,
+      trades: map[h]?.trades ?? 0,
+      winRate: map[h]?.trades > 0 ? ((map[h].wins / map[h].trades) * 100).toFixed(0) : '0'
+    })).filter(d => d.trades > 0);
+  }, [filteredTrades]);
+
+  // Exit reason breakdown
+  const exitReasonData = React.useMemo(() => {
+    const map: Record<string, { wins: number; losses: number; pnl: number }> = {};
+    filteredTrades.forEach(t => {
+      const r = t.exit_reason || 'Unknown';
+      if (!map[r]) map[r] = { wins: 0, losses: 0, pnl: 0 };
+      map[r].pnl += t.profit_dollars;
+      if (t.profit_dollars > 0) map[r].wins++; else map[r].losses++;
+    });
+    return Object.entries(map)
+      .map(([reason, d]) => ({ reason, ...d, total: d.wins + d.losses }))
+      .sort((a, b) => b.total - a.total);
+  }, [filteredTrades]);
 
   if (loading && !stats) {
     return (
@@ -502,6 +558,27 @@ export default function Home() {
 
   const avgWin = displayWins > 0 ? grossProfit / displayWins : 0;
   const avgLoss = displayLosses > 0 ? grossLoss / displayLosses : 0;
+
+  // ── ADVANCED ANALYTICS ──────────────────────────────────────────────────────
+
+  // BUY vs SELL breakdown
+  const buyTrades = filteredTrades.filter(t => t.direction === 'BUY');
+  const sellTrades = filteredTrades.filter(t => t.direction === 'SELL');
+  const buyWins = buyTrades.filter(t => t.profit_dollars > 0).length;
+  const sellWins = sellTrades.filter(t => t.profit_dollars > 0).length;
+  const buyPnL = buyTrades.reduce((a, t) => a + t.profit_dollars, 0);
+  const sellPnL = sellTrades.reduce((a, t) => a + t.profit_dollars, 0);
+  const buyGrossProfit = buyTrades.filter(t => t.profit_dollars > 0).reduce((a, t) => a + t.profit_dollars, 0);
+  const buyGrossLoss = Math.abs(buyTrades.filter(t => t.profit_dollars <= 0).reduce((a, t) => a + t.profit_dollars, 0));
+  const buyWinRate = (buyGrossProfit + buyGrossLoss) > 0 ? ((buyGrossProfit / (buyGrossProfit + buyGrossLoss)) * 100).toFixed(1) : '0.0';
+
+  const sellGrossProfit = sellTrades.filter(t => t.profit_dollars > 0).reduce((a, t) => a + t.profit_dollars, 0);
+  const sellGrossLoss = Math.abs(sellTrades.filter(t => t.profit_dollars <= 0).reduce((a, t) => a + t.profit_dollars, 0));
+  const sellWinRate = (sellGrossProfit + sellGrossLoss) > 0 ? ((sellGrossProfit / (sellGrossProfit + sellGrossLoss)) * 100).toFixed(1) : '0.0';
+
+  // Max Drawdown (computed above before early return)
+  // Profit Factor
+  const profitFactor = absLoss > 0 ? (grossProfit / absLoss).toFixed(2) : grossProfit > 0 ? '∞' : '0.00';
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-6 md:p-12 font-sans selection:bg-emerald-500/30 relative overflow-hidden">
@@ -578,8 +655,11 @@ export default function Home() {
                    <div className="p-1.5 bg-blue-500/10 rounded-md text-blue-600 dark:text-blue-400"><DollarSign className="w-3.5 h-3.5" /></div>
                    <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Net P&L</span>
                  </div>
-                 <div className={`text-xl font-black relative z-10 ${displayPnL >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                   {displayPnL >= 0 ? '+' : ''}${displayPnL.toFixed(2)}
+                 <div className={`text-xl font-black relative z-10 flex items-center gap-2 ${displayPnL >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                    <span>{displayPnL >= 0 ? '+' : ''}${displayPnL.toFixed(2)}</span>
+                    <span className="inline-block text-2xl">
+                      <ProfitEmoji profit={displayPnL} sizeClass="w-8 h-8" />
+                    </span>
                  </div>
                </div>
                
@@ -763,10 +843,13 @@ export default function Home() {
                   
                   {/* Profit Tracking */}
                   <div className="flex flex-col items-center w-full text-center">
-                    <div className={`text-4xl font-black tracking-tighter ${
+                    <div className={`text-4xl font-black tracking-tighter flex items-center justify-center gap-3 ${
                       activeTrade.profit_dollars >= 0 ? 'text-emerald-600' : 'text-red-600'
                     }`}>
-                      {activeTrade.profit_dollars >= 0 ? '+' : ''}${activeTrade.profit_dollars.toFixed(2)}
+                      <span>{activeTrade.profit_dollars >= 0 ? '+' : ''}${activeTrade.profit_dollars.toFixed(2)}</span>
+                      <span className="inline-block text-4xl">
+                        <ProfitEmoji profit={activeTrade.profit_dollars} sizeClass="w-12 h-12" />
+                      </span>
                     </div>
                     <div className={`text-xs font-bold flex flex-col items-center gap-1 mt-1 ${
                       activeTrade.profit_dollars >= 0 ? 'text-emerald-600/80' : 'text-red-600/80'
@@ -811,7 +894,27 @@ export default function Home() {
                     </div>
                   </div>
                   <div className="bg-white dark:bg-slate-800/60 p-2 rounded-lg border border-slate-200 dark:border-slate-700/50 flex flex-col items-center justify-center text-center w-full">
-                    <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-0.5 leading-tight">Stoploss / Trailing SL</span>
+                    {(() => {
+                      let slLabel = "HARD STOPLOSS";
+                      let labelColor = "text-slate-500 dark:text-slate-400";
+                      if (activeTrade.sl && activeTrade.sl > 0) {
+                        const isBuy = activeTrade.direction === 'BUY';
+                        const slDiff = isBuy ? activeTrade.sl - activeTrade.entry_price : activeTrade.entry_price - activeTrade.sl;
+                        
+                        if (slDiff >= 1.5) {
+                          slLabel = "TRAILING SL ACTIVE";
+                          labelColor = "text-emerald-500 font-black";
+                        } else if (slDiff > 0) {
+                          slLabel = "PROFIT LOCK";
+                          labelColor = "text-blue-500 font-black";
+                        }
+                      }
+                      return (
+                        <span className={`text-[9px] font-bold uppercase tracking-widest mb-0.5 leading-tight ${labelColor}`}>
+                          {slLabel}
+                        </span>
+                      );
+                    })()}
                     <span className={`text-base font-bold mt-0.5 ${
                       activeTrade.sl !== undefined && activeTrade.sl > 0 && (
                         (activeTrade.direction === 'BUY' && activeTrade.sl > activeTrade.entry_price) || 
@@ -834,6 +937,72 @@ export default function Home() {
               </div>
             </div>
           )) }
+        {news && (
+
+          <div className="space-y-6">
+
+            
+
+
+            <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden backdrop-blur-xl">
+              <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
+                <table className="w-full text-left border-collapse relative">
+                  <thead className="bg-white dark:bg-slate-800/95 text-slate-900 dark:text-slate-100 text-xs uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-700 sticky top-0 z-20 backdrop-blur-sm">
+                    <tr>
+                      <th className="p-5">Time</th>
+                      <th className="p-5">Impact</th>
+                      <th className="p-5">Event</th>
+                      <th className="p-5 text-right">Forecast</th>
+                      <th className="p-5 text-right">Previous</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                  {displayedNews.map((ev, i) => (
+                    <tr key={i} className="hover:bg-slate-50 dark:bg-slate-900 transition-colors">
+                      <td className="p-5 whitespace-nowrap">
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-900 dark:text-slate-100 font-bold text-sm tracking-wide">
+                              {new Date(ev.date).toLocaleTimeString('en-US', {timeZone: 'Asia/Kolkata', hour: 'numeric', minute:'2-digit', hour12: true})}
+                            </span>
+                            <span className="text-[10px] font-extrabold text-emerald-500 bg-emerald-500/5 px-1 py-0.5 rounded">IST</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-900 dark:text-slate-100 font-medium text-xs tracking-wide">
+                              {new Date(ev.date).toLocaleTimeString('en-US', {timeZone: 'America/New_York', hour: 'numeric', minute:'2-digit', hour12: true})}
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-900 dark:text-slate-100">US Stock Time</span>
+                            <span className="text-slate-500 dark:text-slate-400 font-bold text-[11px] ml-1 tracking-wider">
+                              ({new Date(ev.date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})})
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-5">
+                        <span className={`px-2 py-1 rounded text-[10px] font-black uppercase ${
+                          ev.impact === 'High' ? 'bg-rose-500/20 text-rose-600' : ev.impact === 'Medium' ? 'bg-amber-500/20 text-amber-600' : 'bg-yellow-500/20 text-yellow-600'
+                        }`}>
+                          {ev.impact}
+                        </span>
+                      </td>
+                      <td className="p-5 text-sm font-bold text-slate-900 dark:text-slate-100">{ev.title}</td>
+                      <td className="p-5 text-right text-sm text-slate-900 dark:text-slate-100">{ev.forecast || '-'}</td>
+                      <td className="p-5 text-right text-sm text-slate-900 dark:text-slate-100">{ev.previous || '-'}</td>
+                    </tr>
+                  ))}
+                  {displayedNews.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="p-12 text-center text-slate-900 dark:text-slate-100">
+                        No {newsFilter} USD news events found for today.
+                      </td>
+                    </tr>
+                  )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+                )}
         </div>
 
         {/* RIGHT MAIN AREA */}
@@ -858,11 +1027,27 @@ export default function Home() {
                 const dataMin = Math.min(0, ...chartData.map(d => d.pnl));
                 const off = dataMax <= 0 ? 0 : dataMin >= 0 ? 1 : dataMax / (dataMax - dataMin);
                 
+                const CustomTooltip = ({ active, payload, label }: any) => {
+                  if (active && payload && payload.length) {
+                    const val = payload[0].value;
+                    const isPositive = val >= 0;
+                    return (
+                      <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200/50 dark:border-slate-700/50 p-4 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)]">
+                        <p className="text-slate-500 dark:text-slate-400 text-xs font-extrabold uppercase tracking-widest mb-1">{label}</p>
+                        <p className={`text-lg font-black tracking-tight ${isPositive ? 'text-emerald-500' : 'text-rose-500'}`}>
+                          {isPositive ? '+' : '-'}${Math.abs(val).toFixed(2)}
+                        </p>
+                      </div>
+                    );
+                  }
+                  return null;
+                };
+                
                 return (
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
                       data={chartData}
-                      margin={{ top: 20, right: 10, left: 0, bottom: 0 }}
+                      margin={{ top: 25, right: 10, left: -20, bottom: 0 }}
                     >
                       <defs>
                         <linearGradient id="splitColor" x1="0" y1="0" x2="0" y2="1">
@@ -870,44 +1055,44 @@ export default function Home() {
                           <stop offset={off} stopColor="#ef4444" stopOpacity={1} />
                         </linearGradient>
                         <linearGradient id="splitFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset={off} stopColor="#10b981" stopOpacity={0.15} />
-                          <stop offset={off} stopColor="#ef4444" stopOpacity={0.15} />
+                          <stop offset="0%" stopColor="#10b981" stopOpacity={0.6} />
+                          <stop offset={off} stopColor="#10b981" stopOpacity={0.0} />
+                          <stop offset={off} stopColor="#ef4444" stopOpacity={0.0} />
+                          <stop offset="100%" stopColor="#ef4444" stopOpacity={0.6} />
                         </linearGradient>
+                        <filter id="shadow" height="130%">
+                          <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="#000" floodOpacity="0.05" />
+                        </filter>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                      <XAxis dataKey="time" stroke="#94a3b8" fontSize={12} tickMargin={10} minTickGap={30} tickFormatter={(val) => val ? val.substring(0, 5) : ''} />
-                      <YAxis stroke="#94a3b8" fontSize={12} tickFormatter={(val) => `$${val}`} />
-                      <RechartsTooltip 
-                        contentStyle={{ backgroundColor: isDarkMode ? '#1e293b' : 'white', borderRadius: '12px', border: isDarkMode ? '1px solid #334155' : '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
-                        itemStyle={{ color: isDarkMode ? '#f1f5f9' : '#0f172a', fontWeight: 'bold' }}
-                        labelStyle={{ color: '#64748b', marginBottom: '4px' }}
-                        formatter={(value: any, name: any) => {
-                          const labelText = name === 'pnl' ? 'Net P&L' : name === 'profit' ? 'Trade Profit' : name;
-                          return [`$${Number(value).toFixed(2)}`, labelText];
-                        }}
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="text-slate-200 dark:text-slate-800" strokeOpacity={0.5} />
+                      <XAxis dataKey="time" stroke="currentColor" className="text-slate-400 dark:text-slate-500" fontSize={11} fontWeight={600} tickMargin={12} minTickGap={30} tickFormatter={(val) => val ? val.substring(0, 5) : ''} axisLine={false} tickLine={false} />
+                      <YAxis stroke="currentColor" className="text-slate-400 dark:text-slate-500" fontSize={11} fontWeight={600} tickFormatter={(val) => `$${val}`} axisLine={false} tickLine={false} tickMargin={8} />
+                      <RechartsTooltip content={<CustomTooltip />} cursor={{ stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4 4', opacity: 0.4 }} />
+                      <ReferenceLine 
+                        y={Math.max(...chartData.map(d => d.pnl))} 
+                        label={{ position: 'top', value: `HIGH: $${Math.max(...chartData.map(d => d.pnl)).toFixed(2)}`, fill: '#10b981', fontSize: 10, fontWeight: '900' }} 
+                        stroke="#10b981" 
+                        strokeDasharray="4 4" 
+                        opacity={0.3} 
+                        strokeWidth={2}
+                      />
+                      <ReferenceLine 
+                        y={Math.min(...chartData.map(d => d.pnl))} 
+                        label={{ position: 'bottom', value: `LOW: $${Math.min(...chartData.map(d => d.pnl)).toFixed(2)}`, fill: '#ef4444', fontSize: 10, fontWeight: '900' }} 
+                        stroke="#ef4444" 
+                        strokeDasharray="4 4" 
+                        opacity={0.3} 
+                        strokeWidth={2}
                       />
                       <Area 
                         type="monotone" 
                         dataKey="pnl" 
                         stroke="url(#splitColor)" 
                         fill="url(#splitFill)"
-                        strokeWidth={2} 
+                        strokeWidth={4} 
                         dot={false}
-                        activeDot={{ r: 6, fill: '#ffffff', stroke: '#10b981', strokeWidth: 2 }} 
-                      />
-                      <ReferenceLine 
-                        y={Math.max(...chartData.map(d => d.pnl))} 
-                        label={{ position: 'top', value: `High: $${Math.max(...chartData.map(d => d.pnl)).toFixed(2)}`, fill: '#10b981', fontSize: 12, fontWeight: 'bold' }} 
-                        stroke="#10b981" 
-                        strokeDasharray="3 3" 
-                        opacity={0.5} 
-                      />
-                      <ReferenceLine 
-                        y={Math.min(...chartData.map(d => d.pnl))} 
-                        label={{ position: 'bottom', value: `Low: $${Math.min(...chartData.map(d => d.pnl)).toFixed(2)}`, fill: '#ef4444', fontSize: 12, fontWeight: 'bold' }} 
-                        stroke="#ef4444" 
-                        strokeDasharray="3 3" 
-                        opacity={0.5} 
+                        activeDot={{ r: 8, fill: 'white', stroke: 'url(#splitColor)', strokeWidth: 3 }} 
+                        style={{ filter: 'url(#shadow)' }}
                       />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -952,9 +1137,10 @@ export default function Home() {
                   const lossColor = isActive ? '#ef4444' : '#cbd5e1';
                   const noTradesColor = '#e2e8f0';
 
+                  const pct = parseFloat(session.winRate);
                   const pieData = [
-                    { name: 'Win', value: session.Win, color: winColor },
-                    { name: 'Loss', value: session.Loss, color: lossColor }
+                    { name: 'Win', value: pct, color: winColor },
+                    { name: 'Loss', value: 100 - pct, color: lossColor }
                   ];
                   
                   const totalTrades = session.Win + session.Loss;
@@ -989,25 +1175,16 @@ export default function Home() {
                       </div>
                       
                       <div className="relative w-24 h-24 flex items-center justify-center my-1.5">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={displayData}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={24}
-                              outerRadius={36}
-                              paddingAngle={totalTrades > 0 ? 2 : 0}
-                              dataKey="value"
-                              startAngle={90}
-                              endAngle={-270}
-                            >
-                              {displayData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.color} />
-                              ))}
-                            </Pie>
-                          </PieChart>
-                        </ResponsiveContainer>
+                        <svg width="100%" height="100%" viewBox="0 0 100 100" className="rotate-[-90deg]">
+                          {totalTrades > 0 ? (
+                            <>
+                              <circle cx="50" cy="50" r="30" stroke={lossColor} strokeWidth="12" fill="none" />
+                              <circle cx="50" cy="50" r="30" stroke={winColor} strokeWidth="12" fill="none" strokeDasharray={`${(pct / 100) * (2 * Math.PI * 30)} ${2 * Math.PI * 30}`} />
+                            </>
+                          ) : (
+                            <circle cx="50" cy="50" r="30" stroke={noTradesColor} strokeWidth="12" fill="none" />
+                          )}
+                        </svg>
                         <div className="absolute flex flex-col items-center justify-center">
                           <span className="text-sm font-extrabold text-slate-800 dark:text-slate-200">
                             {session.winRate}%
@@ -1023,16 +1200,168 @@ export default function Home() {
                           <span className="text-slate-500 dark:text-slate-400 font-medium">Win: <b className={isActive ? "text-emerald-600" : "text-slate-500"}>{session.Win}</b></span>
                           <span className="text-slate-500 dark:text-slate-400 font-medium">Loss: <b className={isActive ? "text-red-500" : "text-slate-500"}>{session.Loss}</b></span>
                         </div>
-                        <div className="flex justify-around text-[11px] font-bold">
+                        <div className="flex justify-around text-[11px] font-bold mb-1.5">
                           <span className={isActive ? "text-emerald-600" : "text-slate-500"}>+${session.profit.toFixed(2)}</span>
                           <span className={isActive ? "text-red-500" : "text-slate-500"}>-${session.absLossAmount.toFixed(2)}</span>
                         </div>
+                        {(() => {
+                          const net = session.profit - session.absLossAmount;
+                          const netColor = !isActive ? 'text-slate-500' : net >= 0 ? 'text-emerald-600' : 'text-red-500';
+                          return (
+                            <div className={`text-xs font-black ${netColor} bg-slate-50 dark:bg-slate-800/50 py-1 rounded w-full inline-block`}>
+                              Total: {net >= 0 ? '+' : ''}${net.toFixed(2)}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   );
                 });
               })()}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ADVANCED ANALYTICS SECTION ───────────────────────────────────────── */}
+      {(viewMode === 'trades' || viewMode === 'history') && filteredTrades.length > 0 && (
+        <div className="w-full mb-8 relative z-10 flex flex-col gap-6">
+
+          {/* ROW 1: Risk Metrics — premium stat cards with icon and glow */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              {
+                label: 'Avg Win', value: `+$${avgWin.toFixed(2)}`,
+                valueColor: 'text-emerald-500', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-500',
+                icon: <TrendingUp className="w-5 h-5" />, glow: 'shadow-emerald-500/10',
+                border: 'border-emerald-500/20', grad: 'from-emerald-500/8 to-transparent',
+              },
+              {
+                label: 'Avg Loss', value: `-$${Math.abs(avgLoss).toFixed(2)}`,
+                valueColor: 'text-red-400', iconBg: 'bg-red-500/15', iconColor: 'text-red-400',
+                icon: <TrendingDown className="w-5 h-5" />, glow: 'shadow-red-500/10',
+                border: 'border-red-500/20', grad: 'from-red-500/8 to-transparent',
+              },
+              {
+                label: 'Profit Factor', value: String(profitFactor),
+                valueColor: Number(profitFactor) >= 1.5 ? 'text-emerald-500' : Number(profitFactor) >= 1 ? 'text-amber-400' : 'text-red-400',
+                iconBg: 'bg-blue-500/15', iconColor: 'text-blue-400',
+                icon: <Target className="w-5 h-5" />, glow: 'shadow-blue-500/10',
+                border: 'border-blue-500/20', grad: 'from-blue-500/8 to-transparent',
+              },
+              {
+                label: 'Account Balance', value: balance !== null ? `$${balance.toFixed(2)}` : '...',
+                valueColor: 'text-purple-500', iconBg: 'bg-purple-500/15', iconColor: 'text-purple-500',
+                icon: <DollarSign className="w-5 h-5" />, glow: 'shadow-purple-500/10',
+                border: 'border-purple-500/20', grad: 'from-purple-500/8 to-transparent',
+              },
+            ].map((m) => (
+              <div key={m.label} className={`relative overflow-hidden rounded-2xl border ${m.border} bg-white dark:bg-slate-800/80 shadow-lg ${m.glow} p-5 flex flex-col gap-3`}>
+                <div className={`absolute inset-0 bg-gradient-to-br ${m.grad} pointer-events-none`} />
+                <div className="flex items-center justify-between relative z-10">
+                  <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">{m.label}</span>
+                  <div className={`p-1.5 rounded-lg ${m.iconBg} ${m.iconColor}`}>{m.icon}</div>
+                </div>
+                <div className={`text-3xl font-black tracking-tight ${m.valueColor} relative z-10`}>{m.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* ROW 2: BUY vs SELL + Exit Reason Breakdown */}
+          <div className="grid grid-cols-1 xl:grid-cols-[36%_64%] gap-6">
+
+            {/* BUY vs SELL Breakdown */}
+            <div className="rounded-2xl border border-blue-200 dark:border-slate-700 bg-blue-50 dark:bg-slate-800 shadow-xl shadow-blue-100 dark:shadow-none p-6 flex flex-col">
+              <div className="flex items-center gap-2 mb-6">
+                <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600"><TrendingUp className="w-4 h-4" /></div>
+                <h3 className="text-sm font-black uppercase tracking-widest text-slate-700 dark:text-slate-200">BUY vs SELL</h3>
+              </div>
+              <div className="flex items-center justify-around gap-6 flex-1">
+                {[
+                  { dir: 'BUY', trades: buyTrades.length, wins: buyWins, grossProfit: buyGrossProfit, grossLoss: buyGrossLoss, pnl: buyPnL, winRate: buyWinRate, ringColor: '#10b981', badgeBg: 'bg-emerald-500', textColor: 'text-emerald-600' },
+                  { dir: 'SELL', trades: sellTrades.length, wins: sellWins, grossProfit: sellGrossProfit, grossLoss: sellGrossLoss, pnl: sellPnL, winRate: sellWinRate, ringColor: '#ef4444', badgeBg: 'bg-red-500', textColor: 'text-red-500' },
+                ].map(s => {
+                  const pct = parseInt(s.winRate);
+                  const pieD = s.trades > 0
+                    ? [{ v: pct, color: '#10b981' }, { v: 100 - pct, color: '#ef4444' }]
+                    : [{ v: 1, color: isDarkMode ? '#334155' : '#e2e8f0' }];
+                  return (
+                    <div key={s.dir} className="flex flex-col items-center gap-3 flex-1 w-full px-2">
+                      <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full text-white ${s.badgeBg} shadow-sm`}>{s.dir}</span>
+                      <div className="relative w-28 h-28 my-1 flex items-center justify-center">
+                        <svg width="100%" height="100%" viewBox="0 0 100 100" className="rotate-[-90deg]">
+                          {s.trades > 0 ? (
+                            <>
+                              <circle cx="50" cy="50" r="36" stroke="#ef4444" strokeWidth="16" fill="none" />
+                              <circle cx="50" cy="50" r="36" stroke="#10b981" strokeWidth="16" fill="none" strokeDasharray={`${(pct / 100) * (2 * Math.PI * 36)} ${2 * Math.PI * 36}`} />
+                            </>
+                          ) : (
+                            <circle cx="50" cy="50" r="36" stroke={isDarkMode ? '#334155' : '#e2e8f0'} strokeWidth="16" fill="none" />
+                          )}
+                        </svg>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                          <div className={`absolute w-[56px] h-[56px] rounded-full ${s.dir === 'BUY' ? 'bg-emerald-100/60 dark:bg-emerald-500/10' : 'bg-red-100/60 dark:bg-red-500/10'}`} />
+                          <span className={`relative z-10 text-lg font-black ${s.textColor} leading-none mb-0.5`}>{s.winRate}%</span>
+                          <span className="relative z-10 text-[8px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">Win Rate</span>
+                        </div>
+                      </div>
+                      
+                      <div className="w-full text-center border-t border-slate-200 dark:border-slate-700 pt-3">
+                        <div className="flex justify-around text-xs mb-1">
+                          <span className="text-slate-500 dark:text-slate-400 font-medium">Win: <b className="text-emerald-600">{s.wins}</b></span>
+                          <span className="text-slate-500 dark:text-slate-400 font-medium">Loss: <b className="text-red-500">{s.trades - s.wins}</b></span>
+                        </div>
+                        <div className="flex justify-around text-[11px] font-bold mb-1.5">
+                          <span className="text-emerald-600">+${s.grossProfit.toFixed(2)}</span>
+                          <span className="text-red-500">-${s.grossLoss.toFixed(2)}</span>
+                        </div>
+                        <div className={`text-xs font-black ${s.pnl >= 0 ? 'text-emerald-600' : 'text-red-500'} bg-slate-100 dark:bg-slate-800/50 py-1 rounded w-full inline-block`}>
+                          Total: {s.pnl >= 0 ? '+' : ''}${s.pnl.toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Exit Reason Breakdown */}
+            {exitReasonData.length > 0 && (
+              <div className="rounded-2xl border border-blue-200 dark:border-slate-700 bg-blue-50 dark:bg-slate-800 shadow-xl shadow-blue-100 dark:shadow-none p-6 flex flex-col">
+                <div className="flex items-center gap-2 mb-5">
+                  <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600"><ShieldAlert className="w-4 h-4" /></div>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-700 dark:text-slate-200">Exit Reason Breakdown</h3>
+                </div>
+                <div className="flex flex-col gap-3 flex-1 justify-around">
+                  {exitReasonData.map(r => {
+                    const wr = r.total > 0 ? (r.wins / r.total * 100) : 0;
+                    const maxTotal = exitReasonData[0].total;
+                    const barPct = (r.total / maxTotal) * 100;
+                    const isProfit = r.pnl >= 0;
+                    return (
+                      <div key={r.reason} className="flex flex-col gap-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[12px] font-bold text-slate-700 dark:text-slate-200">{r.reason}</span>
+                          <div className="flex items-center gap-2 text-[11px]">
+                            <span className="text-slate-400">{r.total} trades</span>
+                            <span className="text-slate-400">{wr.toFixed(0)}% WR</span>
+                            <span className={`font-black ${isProfit ? 'text-emerald-500' : 'text-red-400'}`}>
+                              {isProfit ? '+' : ''}${r.pnl.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="h-2 w-full bg-slate-200 dark:bg-slate-700/60 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-700 ${isProfit ? 'bg-emerald-500' : 'bg-red-400'}`}
+                            style={{ width: `${barPct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1055,12 +1384,6 @@ export default function Home() {
                   className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${viewMode === 'trades' ? 'bg-blue-600 text-white shadow-lg dark:shadow-none' : 'text-slate-900 dark:text-slate-100 hover:text-slate-900 dark:text-slate-100'}`}
                 >
                   Trades
-                </button>
-                <button
-                  onClick={() => setViewMode('news')}
-                  className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all flex items-center gap-1.5 ${viewMode === 'news' ? 'bg-indigo-600 text-white shadow-lg dark:shadow-none' : 'text-slate-900 dark:text-slate-100 hover:text-slate-900 dark:text-slate-100'}`}
-                >
-                  <Globe className="w-4 h-4" /> News
                 </button>
                 <button
                   onClick={() => setViewMode('manual')}
@@ -1250,134 +1573,7 @@ export default function Home() {
       </div>
       )}
 
-        {viewMode === 'news' && news ? (
-          <div className="space-y-6">
-            <div className={`p-5 rounded-2xl border shadow-xl flex flex-col md:flex-row items-center justify-between gap-4 transition-colors duration-500 ${
-              news.isBlocked 
-                ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200' 
-                : !news.enabled 
-                  ? 'bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 border-slate-200 dark:border-slate-700' 
-                  : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200'
-            }`}>
-              <div className="flex items-center gap-4">
-                <div className="flex-shrink-0 flex items-center justify-center w-12 h-12 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                  <Globe className={`w-6 h-6 ${news.isBlocked ? 'text-rose-500' : !news.enabled ? 'text-slate-900 dark:text-slate-100' : 'text-emerald-500'}`} />
-                </div>
-                <div>
-                  <h3 className="text-slate-900 dark:text-slate-100 font-bold text-lg flex items-center gap-2">
-                    Forex News Filter
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
-                      news.isBlocked ? 'bg-rose-500/20 text-rose-600' : !news.enabled ? 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400' : 'bg-emerald-500/20 text-emerald-600'
-                    }`}>
-                      {news.status}
-                    </span>
-                  </h3>
-                  <p className="text-sm text-slate-900 dark:text-slate-100 mt-0.5">
-                    {news.isBlocked ? (
-                      <span className="text-rose-600 font-medium">Trading Paused: {news.reason}</span>
-                    ) : !news.enabled ? (
-                      <span>News filter is currently disabled in config.</span>
-                    ) : (
-                      <span>Trading Active. Scanning for high-impact USD events.</span>
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              {news.nextEvent && (
-                <div className="bg-slate-50 dark:bg-slate-900 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col items-end shadow-inner">
-                  <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 uppercase tracking-wider mb-1">Next High Impact Event</span>
-                  <span className="text-sm font-bold text-slate-900 dark:text-slate-100">{news.nextEvent.title}</span>
-                  <span className="text-xs font-medium text-amber-500 mt-0.5">
-                    {new Date(news.nextEvent.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} ({(new Date(news.nextEvent.date).getTime() - new Date().getTime() > 0) ? Math.round((new Date(news.nextEvent.date).getTime() - new Date().getTime()) / 60000) : 0} mins away)
-                  </span>
-                </div>
-              )}
-            </div>
-            
-            <div className="flex items-center gap-1.5 justify-end">
-              <button
-                onClick={() => setNewsFilter('upcoming')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${
-                  newsFilter === 'upcoming' 
-                    ? 'bg-blue-50 dark:bg-slate-8000/20 text-blue-600 border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.2)]'
-                    : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'
-                }`}
-              >
-                UPCOMING
-              </button>
-              <button
-                onClick={() => setNewsFilter('past')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 border ${
-                  newsFilter === 'past' 
-                    ? 'bg-amber-500/20 text-amber-600 border-amber-500/50 shadow-[0_0_10px_rgba(245,158,11,0.2)]'
-                    : 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:bg-slate-800'
-                }`}
-              >
-                PAST
-              </button>
-            </div>
-
-            <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden backdrop-blur-xl">
-              <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
-                <table className="w-full text-left border-collapse relative">
-                  <thead className="bg-white dark:bg-slate-800/95 text-slate-900 dark:text-slate-100 text-xs uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-700 sticky top-0 z-20 backdrop-blur-sm">
-                    <tr>
-                      <th className="p-5">Time</th>
-                      <th className="p-5">Impact</th>
-                      <th className="p-5">Event</th>
-                      <th className="p-5 text-right">Forecast</th>
-                      <th className="p-5 text-right">Previous</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200">
-                  {displayedNews.map((ev, i) => (
-                    <tr key={i} className="hover:bg-slate-50 dark:bg-slate-900 transition-colors">
-                      <td className="p-5 whitespace-nowrap">
-                        <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-slate-900 dark:text-slate-100 font-bold text-sm tracking-wide">
-                              {new Date(ev.date).toLocaleTimeString('en-US', {timeZone: 'Asia/Kolkata', hour: 'numeric', minute:'2-digit', hour12: true})}
-                            </span>
-                            <span className="text-[10px] font-extrabold text-emerald-500 bg-emerald-500/5 px-1 py-0.5 rounded">IST</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-slate-900 dark:text-slate-100 font-medium text-xs tracking-wide">
-                              {new Date(ev.date).toLocaleTimeString('en-US', {timeZone: 'America/New_York', hour: 'numeric', minute:'2-digit', hour12: true})}
-                            </span>
-                            <span className="text-[10px] font-bold text-slate-900 dark:text-slate-100">US Stock Time</span>
-                            <span className="text-slate-500 dark:text-slate-400 font-bold text-[11px] ml-1 tracking-wider">
-                              ({new Date(ev.date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})})
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-5">
-                        <span className={`px-2 py-1 rounded text-[10px] font-black uppercase ${
-                          ev.impact === 'High' ? 'bg-rose-500/20 text-rose-600' : ev.impact === 'Medium' ? 'bg-amber-500/20 text-amber-600' : 'bg-yellow-500/20 text-yellow-600'
-                        }`}>
-                          {ev.impact}
-                        </span>
-                      </td>
-                      <td className="p-5 text-sm font-bold text-slate-900 dark:text-slate-100">{ev.title}</td>
-                      <td className="p-5 text-right text-sm text-slate-900 dark:text-slate-100">{ev.forecast || '-'}</td>
-                      <td className="p-5 text-right text-sm text-slate-900 dark:text-slate-100">{ev.previous || '-'}</td>
-                    </tr>
-                  ))}
-                  {displayedNews.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="p-12 text-center text-slate-900 dark:text-slate-100">
-                        No {newsFilter} USD news events found for today.
-                      </td>
-                    </tr>
-                  )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        ) : (
-        <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl dark:shadow-none overflow-hidden backdrop-blur-xl">
+                <div className="bg-white dark:bg-slate-800 shadow-xl shadow-slate-200/50 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl dark:shadow-none overflow-hidden backdrop-blur-xl">
           <div className="overflow-x-auto overflow-y-auto max-h-[600px]">
             <table className="w-full text-left border-collapse relative">
               <thead className="sticky top-0 z-20">
@@ -1487,7 +1683,6 @@ export default function Home() {
             </table>
           </div>
         </div>
-        )}
       </div>
       </div>
       </div>

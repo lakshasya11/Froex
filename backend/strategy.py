@@ -69,7 +69,6 @@ class EnhancedTradingStrategy:
                         self.symbol, self.TIMEFRAMES[tf], bars=100
                     )
                     if tf_analysis:
-                        # MTF alignment disabled or replaced
                         pass
 
         return analysis
@@ -118,23 +117,22 @@ class EnhancedTradingStrategy:
         vel_limit = getattr(config, "ENTRY_VEL_FRESH", 0.05)
         avg_limit = getattr(config, "ENTRY_AVG_FRESH", 0.03)
 
-        wick_tolerance = max(0.20, _atr_14 * 0.10)
+        base_wick_tolerance = self.get_setting("BASE_WICK_TOLERANCE", 0.50)
+        wick_atr_mult = self.get_setting("WICK_ATR_MULT", 0.20)
+        wick_tolerance = max(base_wick_tolerance, _atr_14 * wick_atr_mult)
 
         min_atr = self.get_setting("MIN_ATR_THRESHOLD", 1.20)
         min_ema_gap = self.get_setting("MIN_EMA_GAP_PTS", 0.35)
         ema21_angle_thresh = self.get_setting("EMA21_ANGLE_THRESHOLD", 4.0)
         ema9_angle_thresh = self.get_setting("EMA9_ANGLE_THRESHOLD", 8.0)
         
-        base_min_candle_range = self.get_setting("MIN_CANDLE_RANGE", 0.20)
-        candle_range_atr_mult = self.get_setting("CANDLE_RANGE_ATR_MULT", 0.30)
-        min_candle_range = max(base_min_candle_range, _atr_14 * candle_range_atr_mult)
+
         
         min_body_size = self.get_setting("MIN_BODY_SIZE", 0.10)
         max_spread = self.get_setting("SPREAD_ALLOWANCE", 0.20)
 
         ema_gap = abs(_ema_9 - _ema_21) if _ema_9 is not None and _ema_21 is not None else 0.0
 
-        # Store context that might be useful for scoring later
         context = {
             "curr_price": _curr_price,
             "instant_velocity": _instant_velocity,
@@ -169,20 +167,13 @@ class EnhancedTradingStrategy:
             if abs(_ema_9 - _ema_21) < min_ema_gap:
                 return block("HARD_RULE_EMA_GAP_TOO_SMALL")
 
+        # Check if EMA angles meet the minimum steepness thresholds for strong trends
         if abs(_ema_21_angle) < ema21_angle_thresh:
             return block("HARD_RULE_EMA21_ANGLE_WEAK")
-
         if abs(_ema_9_angle) < ema9_angle_thresh:
             return block("HARD_RULE_EMA9_ANGLE_WEAK")
 
-
         if direction == "BUY":
-            # --- ALLOW COUNTER-TREND PULLBACK BUY ---
-            # Standard Rule: EMA 9 must be above EMA 21
-            # Exception: Allow BUY if EMA 9 is below EMA 21 ONLY WHEN both prev & curr candles are GREEN
-            if _ema_9 is not None and _ema_21 is not None and _ema_9 <= _ema_21:
-                if not (_curr_color == "GREEN" and _prev_color == "GREEN"):
-                    return block("HARD_RULE_EMA9_BELOW_EMA21")
 
             if _curr_color != "GREEN":
                 return block("HARD_RULE_CURR_COLOR_MISMATCH")
@@ -190,23 +181,18 @@ class EnhancedTradingStrategy:
                 return block("HARD_RULE_MIN_BODY_SIZE")
             if _ema_9 is not None and _curr_price < _ema_9:
                 if _prev_color != "GREEN":
-                    return block("HARD_RULE_EMA9_PULLBACK_PREV_RED")
+                    return block("HARD_RULE_EMA9_PULLBACK_PREV_GREEN")
             if (_curr_price - _current_open) <= 0:
                 return block("HARD_RULE_PRICE_BELOW_OPEN")
             dist_to_high = _current_high - _curr_price
             if dist_to_high > wick_tolerance:
                 return block("HARD_RULE_NOT_AT_HIGH")
-            if _instant_velocity < vel_limit:
+            if abs(_instant_velocity) < vel_limit:
                 return block("HARD_RULE_VELOCITY")
-            if _avg_velocity < avg_limit:
+            if abs(_avg_velocity) < avg_limit:
                 return block("HARD_RULE_AVG_VELOCITY")
         else:
-            # --- ALLOW COUNTER-TREND PULLBACK SELL ---
-            # Standard Rule: EMA 9 must be below EMA 21
-            # Exception: Allow SELL if EMA 9 is above EMA 21 ONLY WHEN both prev & curr candles are RED
-            if _ema_9 is not None and _ema_21 is not None and _ema_9 >= _ema_21:
-                if not (_curr_color == "RED" and _prev_color == "RED"):
-                    return block("HARD_RULE_EMA9_ABOVE_EMA21")
+
 
             if _curr_color != "RED":
                 return block("HARD_RULE_CURR_COLOR_MISMATCH")
@@ -214,15 +200,17 @@ class EnhancedTradingStrategy:
                 return block("HARD_RULE_MIN_BODY_SIZE")
             if _ema_9 is not None and _curr_price > _ema_9:
                 if _prev_color != "RED":
-                    return block("HARD_RULE_EMA9_PULLBACK_PREV_GREEN")
+                    return block("HARD_RULE_EMA9_PULLBACK_PREV_RED")
             if (_curr_price - _current_open) >= 0:
                 return block("HARD_RULE_PRICE_ABOVE_OPEN")
-            dist_to_low = _curr_price - _current_low
-            if dist_to_low > wick_tolerance:
+            sell_wick_mult = self.get_setting("SELL_WICK_MULT", 1.25)
+            sell_wick_tolerance = wick_tolerance * sell_wick_mult
+            if dist_to_low > sell_wick_tolerance:
                 return block("HARD_RULE_NOT_AT_LOW")
-            if _instant_velocity > -vel_limit:
+            # --- FIXED: Use abs() so positive and negative velocity magnitudes work cleanly ---
+            if abs(_instant_velocity) < vel_limit:
                 return block("HARD_RULE_VELOCITY")
-            if _avg_velocity > -avg_limit:
+            if abs(_avg_velocity) < avg_limit:
                 return block("HARD_RULE_AVG_VELOCITY")
 
         return SignalValidationResult(blocked=False, context=context)
@@ -248,10 +236,8 @@ class EnhancedTradingStrategy:
             
         ctx = validation_result.context
         
-        # Start from 100 and deduct/bonus
         score.total = 100.0
 
-        # Retrieve factors dynamically
         vel_penalty_factor = self.get_setting("VEL_PENALTY_FACTOR", 1.5)
         vel_bonus_factor = self.get_setting("VEL_BONUS_FACTOR", 2.0)
         wick_penalty_factor = self.get_setting("WICK_PENALTY_FACTOR", 0.5)
@@ -260,35 +246,35 @@ class EnhancedTradingStrategy:
         ema_gap_bonus_mult = self.get_setting("EMA_GAP_BONUS_MULT", 1.5)
 
         # --- Velocity quality ---
-        vel = ctx["instant_velocity"]
+        vel = abs(ctx["instant_velocity"])
         vel_limit = ctx["vel_limit"]
-        avg_vel = ctx["avg_velocity"]
+        
+        avg_vel = abs(ctx["avg_velocity"])
         avg_limit = ctx["avg_limit"]
 
-        if direction == "BUY":
-            # Barely above minimum → penalty
-            if vel_limit <= vel < vel_limit * vel_penalty_factor:
-                score.total -= 10
-                score.vel_score = 90
-            elif vel >= vel_limit * vel_bonus_factor:
-                score.total += 5
-                score.vel_score = 105
-        else:  # SELL
-            if -vel_limit >= vel > -vel_limit * vel_penalty_factor:  # vel_limit is positive, vel is negative
-                score.total -= 10
-                score.vel_score = 90
-            elif vel <= -vel_limit * vel_bonus_factor:
-                score.total += 5
-                score.vel_score = 105
+        # --- FIXED: Evaluated on magnitude (abs) for both BUY and SELL ---
+        if vel_limit <= vel < vel_limit * vel_penalty_factor:
+            score.total -= 10
+            score.vel_score = 90
+        elif vel >= vel_limit * vel_bonus_factor:
+            score.total += 5
+            score.vel_score = 105
+            
+        if avg_limit <= avg_vel < avg_limit * vel_penalty_factor:
+            score.total -= 5
+            score.vel_score -= 5
+        elif avg_vel >= avg_limit * vel_bonus_factor:
+            score.total += 5
+            score.vel_score += 5
 
         # --- Wick & close quality ---
         dist_to_extreme = ctx["dist_to_high"] if direction == "BUY" else ctx["dist_to_low"]
         wick_tol = ctx["wick_tolerance"]
 
-        if dist_to_extreme > wick_tol * wick_penalty_factor:     # inside tolerance but not tight
+        if dist_to_extreme > wick_tol * wick_penalty_factor:
             score.total -= 5
             score.cons_score = 95
-        elif dist_to_extreme <= wick_tol * wick_bonus_factor:  # very strong close
+        elif dist_to_extreme <= wick_tol * wick_bonus_factor:
             score.total += 5
             score.cons_score = 105
 

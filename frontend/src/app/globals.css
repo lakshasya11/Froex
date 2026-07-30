@@ -19,3 +19,21 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(5deg); }
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+.anim-excited { animation: float 1.5s ease-in-out infinite, wiggle 1s ease-in-out infinite; }
+.anim-happy { animation: float 2.5s ease-in-out infinite; }
+.anim-chill { animation: float 4s ease-in-out infinite; }
+.anim-nervous { animation: shake 0.3s ease-in-out infinite; }
