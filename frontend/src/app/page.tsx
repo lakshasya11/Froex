@@ -1132,9 +1132,8 @@ export default function Home() {
                 return sessionData.map((session) => {
                   const isActive = session.name === activeSession;
                   
-                  // Mute colors for inactive sessions to keep focus on the active one
-                  const winColor = isActive ? '#10b981' : '#94a3b8';
-                  const lossColor = isActive ? '#ef4444' : '#cbd5e1';
+                  const winColor = '#10b981';
+                  const lossColor = '#ef4444';
                   const noTradesColor = '#e2e8f0';
 
                   const pct = parseFloat(session.winRate);
@@ -1197,16 +1196,16 @@ export default function Home() {
                       
                       <div className="w-full text-center border-t border-slate-100 dark:border-slate-800/80 pt-3">
                         <div className="flex justify-around text-xs mb-1">
-                          <span className="text-slate-500 dark:text-slate-400 font-medium">Win: <b className={isActive ? "text-emerald-600" : "text-slate-500"}>{session.Win}</b></span>
-                          <span className="text-slate-500 dark:text-slate-400 font-medium">Loss: <b className={isActive ? "text-red-500" : "text-slate-500"}>{session.Loss}</b></span>
+                          <span className="text-slate-500 dark:text-slate-400 font-medium">Win: <b className="text-emerald-600">{session.Win}</b></span>
+                          <span className="text-slate-500 dark:text-slate-400 font-medium">Loss: <b className="text-red-500">{session.Loss}</b></span>
                         </div>
                         <div className="flex justify-around text-[11px] font-bold mb-1.5">
-                          <span className={isActive ? "text-emerald-600" : "text-slate-500"}>+${session.profit.toFixed(2)}</span>
-                          <span className={isActive ? "text-red-500" : "text-slate-500"}>-${session.absLossAmount.toFixed(2)}</span>
+                          <span className="text-emerald-600">+${session.profit.toFixed(2)}</span>
+                          <span className="text-red-500">-${session.absLossAmount.toFixed(2)}</span>
                         </div>
                         {(() => {
                           const net = session.profit - session.absLossAmount;
-                          const netColor = !isActive ? 'text-slate-500' : net >= 0 ? 'text-emerald-600' : 'text-red-500';
+                          const netColor = net >= 0 ? 'text-emerald-600' : 'text-red-500';
                           return (
                             <div className={`text-xs font-black ${netColor} bg-slate-50 dark:bg-slate-800/50 py-1 rounded w-full inline-block`}>
                               Total: {net >= 0 ? '+' : ''}${net.toFixed(2)}
